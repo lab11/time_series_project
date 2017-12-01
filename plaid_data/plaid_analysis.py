@@ -2,7 +2,6 @@
 import os
 import sys
 import json
-import pprint
 
 # check if plaid dataset exists
 if not (os.path.exists("PLAID/") and os.path.isdir("PLAID/")):
