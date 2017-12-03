@@ -27,8 +27,9 @@ for item in metadata:
     data_id = str(item['id'])
     location = str(item['meta']['location'])
     device_class = str(item['meta']['type']).replace(' ', '_')
+    device_state = str(item['meta']['instances']['status']).replace(' ', '_').replace('-', '_')
     data_filename = 'numpy_arrays/' + data_id + '.npy'
-    out_filename = 'plaid_paper_batch_data/' + device_class + '-' + location + '-file' + data_id + '.npy'
+    out_filename = 'plaid_paper_batch_data/' + device_class + '-' + device_state + '-' + location + '-file' + data_id + '.npy'
     print(data_filename, out_filename)
 
     # read input file
