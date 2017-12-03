@@ -18,8 +18,8 @@ for fname, data_row in zip(sorted(fnames), data):
         class_map.append(class_name)
     trace = np.load(fname)
     data_row[:-2] = np.reshape(trace, 2000)
-    data_row[-2] = class_map.index(class_name)
-    data_row[-1] = int(fname.split('-')[-2].split('house')[1])
+    data_row[-2] = int(fname.split('-')[-2].split('house')[1])
+    data_row[-1] = class_map.index(class_name)
 
 # save big data array
 np.save("traces_bundle", data)
