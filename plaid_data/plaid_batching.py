@@ -34,9 +34,20 @@ for item in metadata:
     # read input file
     data = np.load(data_filename)
     
-    #XXX: select last two full cycles from data
-    output_data = np.array([]) # delete me
+    #select last two full cycles from data
+    frequency = 30000
+    voltage = data[:,1]
+    current = data[:,0]
+    period_len = int(frequency / 60)
+    zero_crossings = np.where(np.diff(np.signbit(voltage)))[0]
+    end = data.shape[0]
+    for z_cross in np.flip(zero_crossings, 0):
+        if voltage[z_cross - 1] < 0:
+            end = z_cross
+            break;
+    two_periods = data[z_cross + 1 - period_len * 2: z_cross + 1]
 
     # write output file
+    output_data = two_periods
     np.save(out_filename, output_data)
 
