@@ -1,8 +1,5 @@
 #! /usr/bin/env python3
 
-# NOTE: In order to make the code simple, we rewrite x * W_1 + b_1 = x' * W_1'
-# where x' = [x | 1] and W_1' is the matrix W_1 appended with a new row with elements b_1's.
-# Similarly, for h * W_2 + b_2
 import tensorflow as tf
 import numpy as np
 from sklearn import datasets
@@ -17,20 +14,27 @@ data = np.load("../plaid_data/traces_bundle.npy")
 np.random.shuffle(data)
 Data = data[:, 0:-2]
 Labels = data[:,-1]
-house_ids = data[:,-2]
+Device_Names = data[:,-2] #XXX to be used eventually for unseen testing
 
 # Config:
-n_hidden    = 30
+n_hidden    = 300
 n_input     = 2*2*500#int(2.52E3/60)
 n_classes   = 11
-learning_rate = 0.1
+learning_rate = 0.001
 n_steps     = 500
 display_step= 100
 batch_size  = 50
+if Labels.max()+1 != n_classes:
+    print("Number of classes doesn't match labels input")
 
+# convert Labels from integers to one-hot array
+OneHotLabels = np.eye(n_classes)[Labels.astype(np.int64)]
+
+# neural network inputs
 X = tf.placeholder("float", [None, n_input])
 Y = tf.placeholder("float", [None, n_classes])
 
+# neural network parameters
 weights = {
     'h1':  tf.Variable(tf.random_normal([n_input, n_hidden])),
     'out': tf.Variable(tf.random_normal([n_hidden, n_classes])),
@@ -49,7 +53,7 @@ def neural_net(x):
 
 # construct model
 logits = neural_net(X)
-prediction = tf.nn.softmax(logits)
+prediction = tf.nn.softmax(logits) # reduce unscaled values to probabilities
 
 # Define loss and optimizer
 loss_op = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=Y))
@@ -57,8 +61,8 @@ optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
 train_op = optimizer.minimize(loss_op)
 
 # Evaluate
-correct_pred = tf.equal(tf.argmax(prediction, 1), tf.argmax(Y, 1))
-accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
+correct_pred = tf.equal(tf.argmax(prediction, 1), tf.argmax(Y, 1)) # check the index with the largest value
+accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32)) # percentage of traces that were correct
 
 init = tf.global_variables_initializer()
 
@@ -66,14 +70,19 @@ with tf.Session() as sess:
 
     sess.run(init)
 
-    for step in range(1, n_steps+1):
-        batch_nums = np.random.choice(Data.shape[0], batch_size)
-        test_nums = np.random.choice(Data.shape[0], 2000)
+    #for step in range(1, n_steps+1):
 
-        sess.run(train_op, feed_dict = {X: Data[batch_nums], Y: Labels[batch_nums]})
+    step = 1
+    while True:
+        step += 1
+
+        batch_nums = np.random.choice(Data.shape[0], batch_size) #XXX: Need to add a weight matrix here based on classes
+        test_nums = np.random.choice(Data.shape[0], 1700) #XXX: Where did 2000 come from???
+
+        sess.run(train_op, feed_dict = {X: Data[batch_nums], Y: OneHotLabels[batch_nums]})
         if step % display_step == 0 or step == 1:
             # calculate batch loss and accuracy
-            loss, acc = sess.run([loss_op, accuracy], feed_dict={X: Data[test_nums], Y: Labels[test_nums]})
+            loss, acc = sess.run([loss_op, accuracy], feed_dict={X: Data[test_nums], Y: OneHotLabels[test_nums]})
             print("Step " + str(step) + ", Minibatch Loss= " + \
                   "{:.4f}".format(loss) + ", Training Accuracy= " + \
                   "{:.3f}".format(acc))
