@@ -11,7 +11,7 @@ n_hidden    = 30*11
 n_input     = 2*2*500 # current & voltage, 2 AC cycles @ 30 kHz
 n_classes   = 11
 learning_rate = 0.001
-display_step= 500
+display_step= 100
 batch_size  = 50
 
 # ensure that we always "randomly" run in a repeatable way

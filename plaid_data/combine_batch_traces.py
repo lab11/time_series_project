@@ -7,6 +7,12 @@ from zlib import crc32
 
 fnames = glob.glob("plaid_paper_batch_data/*.npy")
 
+# we're going to skip house2 from dataset2 as it has one of every class
+# that dataset will be used for final validation
+skiphouse = 'house2'
+skipdataset = 'dataset2'
+print("Skipping " + skiphouse + " from " + skipdataset)
+
 test = np.load(fnames[0])
 
 # num traces x current | voltage | device_name | label
@@ -25,6 +31,12 @@ for fname, data_row in zip(sorted(fnames), data):
     # note: device name is a uniquely identifying string for that device including
     #   the dataset, house number, and model/make of the device
     device_name = os.path.basename(fname).split('-')[2]
+
+    # skip validation house
+    if skiphouse in device_name and skipdataset in device_name:
+        continue
+
+    # create map of device names we are including
     if device_name not in name_map:
         name_map.append(device_name)
 
