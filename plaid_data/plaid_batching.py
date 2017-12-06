@@ -13,7 +13,8 @@ if not (os.path.exists("numpy_arrays/") and os.path.isdir("PLAID/")):
     sys.exit()
 
 # make folders if needed
-pathlib.Path('plaid_paper_batch_data').mkdir(parents=True, exist_ok=True)
+if not os.path.exists('plaid_paper_batch_data'):
+    os.makedirs('plaid_paper_batch_data')
 
 # collect metadata
 metadata_filenames = [("PLAID/meta1.json", 'dataset1'), ("PLAID/meta2StatusesRenamed.json", 'dataset2')]
