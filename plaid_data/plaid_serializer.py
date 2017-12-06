@@ -23,8 +23,11 @@ if not (os.path.exists("PLAID/") and os.path.isdir("PLAID/")):
     os.system("tar -xvf Plaid.tar.gz")
 
 # Make folders if needed
-pathlib.Path('numpy_arrays').mkdir(parents=True, exist_ok=True)
-pathlib.Path('powerblade_arrays').mkdir(parents=True, exist_ok=True)
+if not os.path.exists('numpy_arrays'):
+    os.makedirs('numpy_arrays')
+
+if not os.path.exists('powerblade_arrays'):
+    os.makedirs('powerblade_arrays')
 
 # Get all the csv files names
 fnames = glob.glob("PLAID/CSV/*.csv")
