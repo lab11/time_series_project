@@ -3,6 +3,7 @@ import numpy as np
 import json
 import os
 import pathlib
+import sys
 
 # check that the PLAID dataset already exists
 if not (os.path.exists("PLAID/") and os.path.isdir("PLAID/")):
