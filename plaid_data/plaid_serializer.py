@@ -4,7 +4,7 @@ import csv
 import glob
 import os
 import pathlib
-
+from multiprocessing import Pool
 
 """
 Takes all the plaid files, turns them into numpy arrays, serializes them.
@@ -35,12 +35,13 @@ files = {} # where we keep the csv files
 
 # Iterate through files parsing and serializing as numpy arrays
 print("Parsing files...")
-for f in sorted(fnames):
-    print("  " + str(f))
-    a = np.loadtxt(f, delimiter=",")
+
+def parse(fname):
+    print("  " + str(fname))
+    a = np.loadtxt(fname, delimiter=",")
 
     # save numpy array
-    outfilename = "numpy_arrays/" + os.path.basename(f).split('.')[0]
+    outfilename = "numpy_arrays/" + os.path.basename(fname).split('.')[0]
     np.save(outfilename, a)
 
     # also downsample the array to match powerblade (42 samples per AC cycle)
@@ -59,6 +60,8 @@ for f in sorted(fnames):
     new_array = np.concatenate((new_current, new_voltage), axis=1)
 
     # save numpy array
-    outfilename = "powerblade_arrays/" + os.path.basename(f).split('.')[0]
+    outfilename = "powerblade_arrays/" + os.path.basename(fname).split('.')[0]
     np.save(outfilename, new_array)
 
+p = Pool(50)
+p.map(parse,sorted(fnames))
