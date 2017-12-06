@@ -39,7 +39,7 @@ for datasetname in sorted(metadata.keys()):
             device_appliance += item['meta']['appliance'][app_key].replace(' ', '_').replace('-', '_').replace('.', '_').replace('(', '').replace(')', '').replace('/', '')
         if device_appliance == '':
             device_appliance = 'unknown'
-        device_full_name = datasetname + '_' + location + '_' + device_appliance
+        device_full_name = datasetname + '_' + location + '_' + device_appliance + '_' + device_class
 
         # determine input and output files
         data_filename = 'numpy_arrays/' + data_id + '.npy'

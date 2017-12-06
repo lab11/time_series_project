@@ -27,23 +27,91 @@ Labels = data[:,-1]
 if Labels.max()+1 != n_classes:
     print("Error: Number of classes doesn't match labels input")
     sys.exit()
-Device_Names = data[:,-2] #XXX to be used eventually for unseen testing
+Names = data[:,-2]
+
+# function to generate a training and validation, with equal label representation
+def generate_training_and_validation (dataset, labelset, nameset, testing_percent):
+    training_data = np.empty((0,2000))
+    training_labels = np.empty((0, 2000))
+    validation_data = np.empty((0, 2000))
+    validation_labels = np.empty((0, 2000))
+
+    for label in sorted(range(int(max(labelset+1)))):
+        # find indices matching this class
+        matching_indices = np.flatnonzero((labelset == label))
+        matching_data = dataset[matching_indices]
+        matching_labels = labelset[matching_indices]
+        matching_names = nameset[matching_indices]
+
+        # determine number of traces we need to leave out
+        class_trace_count = len(matching_names)
+        min_trace_count = int(testing_percent*class_trace_count)
+
+        # iterate through each device in this class
+        unique_names, unique_name_counts = np.unique(matching_names, return_counts=True)
+        selected_count = 0
+        while selected_count < min_trace_count:
+            # select an index
+            index = np.random.randint(0, len(unique_names))
+
+            # can't select the same device twice
+            if unique_name_counts[index] == -1:
+                continue
+
+            # add selected device to validation set
+            name = unique_names[index]
+            device_matching_indices = np.flatnonzero((matching_names == name))
+            validation_data = np.vstack((validation_data, matching_data[device_matching_indices]))
+            validation_labels = np.append(validation_labels, matching_labels[device_matching_indices])
+
+            # add trace count from selected device
+            selected_count += unique_name_counts[index]
+            unique_name_counts[index] = -1
+
+        # add the rest to the training data
+        for index in range(len(unique_names)):
+            # skip validation data
+            if unique_name_counts[index] == -1:
+                continue
+
+            # add to training set
+            name = unique_names[index]
+            device_matching_indices = np.flatnonzero((matching_names == name))
+            training_data = np.vstack((training_data, matching_data[device_matching_indices]))
+            training_labels = np.append(training_labels, matching_labels[device_matching_indices])
+
+
+    # shuffle the validation and data arrays
+    permutation = np.random.permutation(training_data.shape[0])
+    shuffled_training_data = training_data[permutation]
+    shuffled_training_labels = training_labels[permutation]
+    permutation = np.random.permutation(validation_data.shape[0])
+    shuffled_validation_data = validation_data[permutation]
+    shuffled_validation_labels = validation_labels[permutation]
+
+    # complete! Return data
+    return shuffled_training_data, shuffled_training_labels, shuffled_validation_data, shuffled_validation_labels
+
+
+# generate training and validation datasets (already shuffled)
+TrainingData, TrainingLabels, ValidationData, ValidationLabels = generate_training_and_validation(Data, Labels, Names, 0.20)
 
 # determine probabilities of selection for each trace
 #  - the probability of selecting each class should be equal
 #  - the probability of selecting any trace within a single class should be equal
 class_prob = 1.0/n_classes
 trace_prob = np.zeros(n_classes)
-Data_probabilities = np.zeros(len(Labels))
-for label in Labels:
+TrainingData_probabilities = np.zeros(len(TrainingLabels))
+for label in TrainingLabels:
     trace_prob[int(label)] += 1
 for index, count in enumerate(trace_prob):
     trace_prob[index] = class_prob/count
-for index in range(len(Data_probabilities)):
-    Data_probabilities[index] = trace_prob[int(Labels[index])]
+for index in range(len(TrainingData_probabilities)):
+    TrainingData_probabilities[index] = trace_prob[int(TrainingLabels[index])]
 
 # convert Labels from integers to one-hot array
-OneHotLabels = np.eye(n_classes)[Labels.astype(np.int64)]
+OneHotTrainingLabels = np.eye(n_classes)[TrainingLabels.astype(np.int64)]
+OneHotValidationLabels = np.eye(n_classes)[ValidationLabels.astype(np.int64)]
 
 # neural network inputs
 X = tf.placeholder("float", [None, n_input])
@@ -86,7 +154,8 @@ with tf.Session() as sess:
     sess.run(init)
 
     # always test on everything
-    test_nums = range(len(Data))
+    training_nums = range(len(TrainingData))
+    validation_nums = range(len(ValidationData))
 
     # iterate forever training model
     step = 1
@@ -94,16 +163,19 @@ with tf.Session() as sess:
         step += 1
 
         # select data to train on and test on for this iteration
-        batch_nums = np.random.choice(Data.shape[0], batch_size, p=Data_probabilities)
+        batch_nums = np.random.choice(TrainingData.shape[0], batch_size, p=TrainingData_probabilities)
 
         # run training
-        sess.run(train_op, feed_dict = {X: Data[batch_nums], Y: OneHotLabels[batch_nums]})
+        sess.run(train_op, feed_dict = {X: TrainingData[batch_nums], Y: OneHotTrainingLabels[batch_nums]})
 
         # check accuracy every N iterations
         if step % display_step == 0 or step == 1:
             # calculate batch loss and accuracy
-            loss, acc = sess.run([loss_op, accuracy], feed_dict={X: Data[test_nums], Y: OneHotLabels[test_nums]})
-            print("Step " + str(step) + ", Minibatch Loss= " + \
-                  "{:.4f}".format(loss) + ", Training Accuracy= " + \
-                  "{:.3f}".format(acc))
+            training_loss, training_accuracy = sess.run([loss_op, accuracy], feed_dict={X: TrainingData[training_nums], Y:OneHotTrainingLabels[training_nums]})
+            validation_loss, validation_accuracy = sess.run([loss_op, accuracy], feed_dict={X: ValidationData[validation_nums], Y: OneHotValidationLabels[validation_nums]})
+            print("Step " + str(step) + \
+                    ", Training Loss= " + "{:.4f}".format(training_loss) + \
+                    ", Training Accuracy= " + "{:.3f}".format(training_accuracy) + \
+                    ", Validation Loss= " + "{:.4f}".format(validation_loss) + \
+                    ", Validation Accuracy = " + "{:.3f}".format(validation_accuracy))
 
