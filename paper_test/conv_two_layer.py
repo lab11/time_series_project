@@ -7,11 +7,13 @@ from sklearn.model_selection import train_test_split
 import sys
 
 # Config:
-n_hidden    = 30*11
+conv_filt_size = 20
+n_conv_filts = 3
+n_hidden    = 100
 n_input     = 2*2*500 # current & voltage, 2 AC cycles @ 30 kHz
 n_classes   = 11
 learning_rate = 0.001
-display_step= 100
+display_step= 500
 batch_size  = 50
 
 # ensure that we always "randomly" run in a repeatable way
@@ -51,17 +53,25 @@ Y = tf.placeholder("float", [None, n_classes])
 
 # neural network parameters
 weights = {
-    'h1':  tf.Variable(tf.random_normal([n_input, n_hidden])),
+    'conv': tf.Variable(tf.random_normal([conv_filt_size, 1, 1, n_conv_filts])),
+    'h1':  tf.Variable(tf.random_normal([n_input*n_conv_filts, n_hidden])),
     'out': tf.Variable(tf.random_normal([n_hidden, n_classes])),
 }
 biases = {
+    'conv': tf.Variable(tf.random_normal([n_conv_filts])),
     'b1':   tf.Variable(tf.random_normal([n_hidden])),
     'out':  tf.Variable(tf.random_normal([n_classes])),
 }
 
 def neural_net(x):
+    #reshape for input to the convolution
+    rdata = tf.reshape(x,[-1,n_input,1,1])
+    # a small convolutional layer to learn filters
+    conv_1 = tf.nn.relu(tf.nn.conv2d(rdata,weights['conv'], strides=[1,1,1,1], padding='SAME') + biases['conv'])
+    #reshape the conv output to be flat
+    conv_1_out = tf.reshape(conv_1, [-1,n_input*n_conv_filts])
     # hidden fully connected layer
-    layer_1 = tf.nn.relu(tf.add(tf.matmul(x, weights['h1']), biases['b1']))
+    layer_1 = tf.nn.relu(tf.add(tf.matmul(conv_1_out, weights['h1']), biases['b1']))
     # output fully connected layer, neuron for each class
     out_layer = tf.matmul(layer_1, weights['out']) + biases['out']
     return out_layer
