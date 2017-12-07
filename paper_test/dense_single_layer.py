@@ -15,7 +15,7 @@ display_step= 100
 batch_size  = 50
 
 # ensure that we always "randomly" run in a repeatable way
-RANDOM_SEED = 42
+RANDOM_SEED = 21
 tf.set_random_seed(RANDOM_SEED)
 np.random.seed(RANDOM_SEED)
 
@@ -103,7 +103,7 @@ class_prob = 1.0/n_classes
 trace_prob = np.zeros(n_classes)
 TrainingData_probabilities = np.zeros(len(TrainingLabels))
 for label in TrainingLabels:
-    trace_prob[int(label)] += 1
+    trace_prob[int(label)] += 1.0
 for index, count in enumerate(trace_prob):
     trace_prob[index] = class_prob/count
 for index in range(len(TrainingData_probabilities)):
@@ -170,12 +170,29 @@ with tf.Session() as sess:
 
         # check accuracy every N iterations
         if step % display_step == 0 or step == 1:
-            # calculate batch loss and accuracy
-            training_loss, training_accuracy = sess.run([loss_op, accuracy], feed_dict={X: TrainingData[training_nums], Y:OneHotTrainingLabels[training_nums]})
-            validation_loss, validation_accuracy = sess.run([loss_op, accuracy], feed_dict={X: ValidationData[validation_nums], Y: OneHotValidationLabels[validation_nums]})
+
+            # training accuracy
+            training_loss, training_accuracy, training_preds = sess.run([loss_op, accuracy, correct_pred], feed_dict={X: TrainingData[training_nums], Y:OneHotTrainingLabels[training_nums]})
+
+            # validation accuracy
+            validation_loss, validation_accuracy, validation_preds = sess.run([loss_op, accuracy, correct_pred], feed_dict={X: ValidationData[validation_nums], Y: OneHotValidationLabels[validation_nums]})
+
+            # print overal statistics
             print("Step " + str(step) + \
-                    ", Training Loss= " + "{:.4f}".format(training_loss) + \
-                    ", Training Accuracy= " + "{:.3f}".format(training_accuracy) + \
-                    ", Validation Loss= " + "{:.4f}".format(validation_loss) + \
-                    ", Validation Accuracy = " + "{:.3f}".format(validation_accuracy))
+                    ", Training Loss= " + "{:4.3f}".format(training_loss) + \
+                    ", Validation Loss= " + "{:4.3f}".format(validation_loss))
+
+            # determine per-class results and print
+            print("Class | Training (cnt) | Validation (cnt)")
+            for label in range(n_classes):
+                label_indices = np.flatnonzero((TrainingLabels == label))
+                t_result = np.mean(training_preds[label_indices])
+                t_count = len(label_indices)
+
+                label_indices = np.flatnonzero((ValidationLabels == label))
+                v_result = np.mean(validation_preds[label_indices])
+                v_count = len(label_indices)
+
+                print("  {:3d} |    {:.3f} ({:3d}) |      {:.3f} ({:3d})".format(label, t_result, t_count, v_result, v_count))
+            print("Total |    {:.3f}       |      {:.3f}".format(training_accuracy, validation_accuracy))
 
