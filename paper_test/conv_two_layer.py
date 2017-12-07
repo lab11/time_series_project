@@ -1,66 +1,35 @@
-#! /usr/bin/env python
+#! /usr/bin/env python3
 
 import tensorflow as tf
 import numpy as np
 from sklearn import datasets
-from sklearn.model_selection import train_test_split
 import sys
+
+from plaid_data_setup import get_input_len, get_labels_len, run_nn
 
 # Config:
 conv_filt_size = 20
 n_conv_filts = 3
 n_hidden    = 100
-n_input     = 2*2*500 # current & voltage, 2 AC cycles @ 30 kHz
-n_classes   = 11
+n_input     = get_input_len()
+n_labels    = get_labels_len()
 learning_rate = 0.001
-display_step= 500
-batch_size  = 50
 
-# ensure that we always "randomly" run in a repeatable way
-RANDOM_SEED = 42
-tf.set_random_seed(RANDOM_SEED)
-np.random.seed(RANDOM_SEED)
 
-# load and shuffle data
-data = np.load("../plaid_data/traces_bundle.npy")
-np.random.shuffle(data)
-Data = data[:, 0:-2]
-Labels = data[:,-1]
-if Labels.max()+1 != n_classes:
-    print("Error: Number of classes doesn't match labels input")
-    sys.exit()
-Device_Names = data[:,-2] #XXX to be used eventually for unseen testing
-
-# determine probabilities of selection for each trace
-#  - the probability of selecting each class should be equal
-#  - the probability of selecting any trace within a single class should be equal
-class_prob = 1.0/n_classes
-trace_prob = np.zeros(n_classes)
-Data_probabilities = np.zeros(len(Labels))
-for label in Labels:
-    trace_prob[int(label)] += 1
-for index, count in enumerate(trace_prob):
-    trace_prob[index] = class_prob/count
-for index in range(len(Data_probabilities)):
-    Data_probabilities[index] = trace_prob[int(Labels[index])]
-
-# convert Labels from integers to one-hot array
-OneHotLabels = np.eye(n_classes)[Labels.astype(np.int64)]
-
-# neural network inputs
+# neural network inputs and expected results
 X = tf.placeholder("float", [None, n_input])
-Y = tf.placeholder("float", [None, n_classes])
+Y = tf.placeholder("float", [None, n_labels])
 
 # neural network parameters
 weights = {
     'conv': tf.Variable(tf.random_normal([conv_filt_size, 1, 1, n_conv_filts])),
     'h1':  tf.Variable(tf.random_normal([n_input*n_conv_filts, n_hidden])),
-    'out': tf.Variable(tf.random_normal([n_hidden, n_classes])),
+    'out': tf.Variable(tf.random_normal([n_hidden, n_labels])),
 }
 biases = {
     'conv': tf.Variable(tf.random_normal([n_conv_filts])),
     'b1':   tf.Variable(tf.random_normal([n_hidden])),
-    'out':  tf.Variable(tf.random_normal([n_classes])),
+    'out':  tf.Variable(tf.random_normal([n_labels])),
 }
 
 def neural_net(x):
@@ -89,31 +58,6 @@ train_op = optimizer.minimize(loss_op)
 correct_pred = tf.equal(tf.argmax(prediction, 1), tf.argmax(Y, 1)) # check the index with the largest value
 accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32)) # percentage of traces that were correct
 
-init = tf.global_variables_initializer()
-
-with tf.Session() as sess:
-
-    sess.run(init)
-
-    # always test on everything
-    test_nums = range(len(Data))
-
-    # iterate forever training model
-    step = 1
-    while True:
-        step += 1
-
-        # select data to train on and test on for this iteration
-        batch_nums = np.random.choice(Data.shape[0], batch_size, p=Data_probabilities)
-
-        # run training
-        sess.run(train_op, feed_dict = {X: Data[batch_nums], Y: OneHotLabels[batch_nums]})
-
-        # check accuracy every N iterations
-        if step % display_step == 0 or step == 1:
-            # calculate batch loss and accuracy
-            loss, acc = sess.run([loss_op, accuracy], feed_dict={X: Data[test_nums], Y: OneHotLabels[test_nums]})
-            print("Step " + str(step) + ", Minibatch Loss= " + \
-                  "{:.4f}".format(loss) + ", Training Accuracy= " + \
-                  "{:.3f}".format(acc))
+# train the neural network on test data
+run_nn(X, Y, train_op, loss_op, accuracy, correct_pred)
 
