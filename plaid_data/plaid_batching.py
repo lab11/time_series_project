@@ -50,7 +50,8 @@ for datasetname in sorted(metadata.keys()):
         # read input file
         data = np.load(data_filename)
 
-        #select last two full cycles from data
+        #select last N full cycles from data
+        n_cycles = 1
         frequency = 30000
         voltage = data[:,1]
         current = data[:,0]
@@ -61,7 +62,7 @@ for datasetname in sorted(metadata.keys()):
             if voltage[z_cross - 1] < 0:
                 end = z_cross
                 break;
-        two_periods = data[z_cross + 1 - period_len * 2: z_cross + 1]
+        two_periods = data[z_cross + 1 - period_len * n_cycles: z_cross + 1]
 
         # write output file
         output_data = two_periods

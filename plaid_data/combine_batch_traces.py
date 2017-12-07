@@ -46,7 +46,7 @@ for fname in sorted(fnames):
 
     # record data for this trace
     trace = np.load(fname)
-    data_row[:-2] = np.reshape(trace, 2000)
+    data_row[:-2] = trace.flatten()
     data_row[-2] = name_map.index(device_name)
     data_row[-1] = class_map.index(class_name)
 
