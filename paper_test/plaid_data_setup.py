@@ -4,10 +4,11 @@ import tensorflow as tf
 import numpy as np
 from sklearn import datasets
 from sklearn.model_selection import train_test_split
+from scipy.stats.mstats import zscore
 import sys
 
 # ensure that we always "randomly" run in a repeatable way
-RANDOM_SEED = 21
+RANDOM_SEED = 12
 tf.set_random_seed(RANDOM_SEED)
 np.random.seed(RANDOM_SEED)
 
@@ -17,6 +18,7 @@ def gen_data():
     data = np.load("../plaid_data/traces_bundle.npy")
     np.random.shuffle(data)
     Data = data[:, 0:-2]
+    Data = zscore(Data)
     Labels = data[:,-1]
     Names = data[:,-2]
 
@@ -109,7 +111,7 @@ def generate_training_and_validation (dataset, labelset, nameset, testing_percen
 
 
 # function to run neural network training
-def run_nn(tf_input, tf_expected, train_op, loss_op, accuracy, correct_pred):
+def run_nn(tf_input, tf_expected, train_op, loss_op, accuracy, correct_pred, logits):
     # configurations
     batch_size  = 50
     display_step  = 100
@@ -139,6 +141,8 @@ def run_nn(tf_input, tf_expected, train_op, loss_op, accuracy, correct_pred):
     training_nums = range(len(TrainingData))
     validation_nums = range(len(ValidationData))
 
+
+
     # initialize tensorflow variables
     init = tf.global_variables_initializer()
 
@@ -161,7 +165,7 @@ def run_nn(tf_input, tf_expected, train_op, loss_op, accuracy, correct_pred):
             if step % display_step == 0 or step == 1:
 
                 # training accuracy
-                training_loss, training_accuracy, training_preds = sess.run([loss_op, accuracy, correct_pred], feed_dict={tf_input: TrainingData[training_nums], tf_expected: OneHotTrainingLabels[training_nums]})
+                training_loss, training_accuracy, training_preds, training_logits = sess.run([loss_op, accuracy, correct_pred, logits], feed_dict={tf_input: TrainingData[training_nums], tf_expected: OneHotTrainingLabels[training_nums]})
 
                 # validation accuracy
                 validation_loss, validation_accuracy, validation_preds = sess.run([loss_op, accuracy, correct_pred], feed_dict={tf_input: ValidationData[validation_nums], tf_expected: OneHotValidationLabels[validation_nums]})

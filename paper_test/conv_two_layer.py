@@ -13,7 +13,7 @@ n_conv_filts = 3
 n_hidden    = 100
 n_input     = get_input_len()
 n_labels    = get_labels_len()
-learning_rate = 0.001
+learning_rate = 0.0001
 
 
 # neural network inputs and expected results
@@ -41,8 +41,9 @@ def neural_net(x):
     conv_1_out = tf.reshape(conv_1, [-1,n_input*n_conv_filts])
     # hidden fully connected layer
     layer_1 = tf.nn.relu(tf.add(tf.matmul(conv_1_out, weights['h1']), biases['b1']))
+    layer_1_dropout = tf.nn.dropout(layer_1, 0.8)
     # output fully connected layer, neuron for each class
-    out_layer = tf.matmul(layer_1, weights['out']) + biases['out']
+    out_layer = tf.matmul(layer_1_dropout, weights['out']) + biases['out']
     return out_layer
 
 # construct model
@@ -59,5 +60,5 @@ correct_pred = tf.equal(tf.argmax(prediction, 1), tf.argmax(Y, 1)) # check the i
 accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32)) # percentage of traces that were correct
 
 # train the neural network on test data
-run_nn(X, Y, train_op, loss_op, accuracy, correct_pred)
+run_nn(X, Y, train_op, loss_op, accuracy, correct_pred, logits)
 
