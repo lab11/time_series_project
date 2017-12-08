@@ -11,6 +11,7 @@ from plaid_data_setup import get_input_len, get_labels_len, run_nn
 n_hidden    = 30
 n_input     = get_input_len()
 n_labels   = get_labels_len()
+n_networks = 55
 learning_rate = 0.001
 
 
@@ -20,17 +21,15 @@ Y = tf.placeholder("float", [None, n_labels])
 
 # neural network parameters
 weight = {
-    'h1':  tf.Variable(tf.random_normal([n_input, n_hidden])),
-    'out': tf.Variable(tf.random_normal([n_hidden, 1])),
+    'out': tf.Variable(tf.random_normal([n_networks, n_labels])),
 }
 bias = {
-    'b1':   tf.Variable(tf.random_normal([n_hidden])),
-    'out':  tf.Variable(tf.random_normal([1])),
+    'out':  tf.Variable(tf.random_normal([n_labels])),
 }
 
 weights = []
 biases = []
-for n in range(n_labels):
+for n in range(n_networks):
     weights.append({'h1':  tf.Variable(tf.random_normal([n_input, n_hidden])),
     'out': tf.Variable(tf.random_normal([n_hidden, 1]))})
 
@@ -42,7 +41,7 @@ layer_1 = []
 
 #I think this should run a bunch of mini neural nets
 def neural_net(x):
-    for i in range(n_labels):
+    for i in range(n_networks):
         # hidden fully connected layer
         layer_1.append(tf.nn.relu(tf.add(tf.matmul(x, weights[i]['h1']), biases[i]['b1'])))
         # output fully connected layer, neuron for each class
@@ -52,8 +51,9 @@ def neural_net(x):
     return tf.stack(out_layer, axis=1)
 
 # construct model
-logits = neural_net(X)
-logits = tf.squeeze(logits)
+stack_out = neural_net(X)
+stack_out = tf.squeeze(stack_out)
+logits = tf.matmul(stack_out, weight['out']) + bias['out']
 prediction = tf.nn.softmax(logits) # reduce unscaled values to probabilities
 
 # Define loss and optimizer
