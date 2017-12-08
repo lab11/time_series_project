@@ -6,6 +6,7 @@ from sklearn import datasets
 from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
 import sys
+import os
 
 # ensure that we always "randomly" run in a repeatable way
 RANDOM_SEED = 21
@@ -110,7 +111,7 @@ def generate_training_and_validation (dataset, labelset, nameset, testing_percen
 
 
 # function to run neural network training
-def run_nn(tf_input, tf_expected, train_op, loss_op, accuracy, predictions, correct_pred):
+def run_nn(checkpointFile, tf_input, tf_expected, train_op, loss_op, accuracy, predictions, correct_pred):
     # configurations
     batch_size  = 50
     display_step  = 100
@@ -143,9 +144,17 @@ def run_nn(tf_input, tf_expected, train_op, loss_op, accuracy, predictions, corr
     # initialize tensorflow variables
     init = tf.global_variables_initializer()
 
+    # create a saver object
+    saver = tf.train.Saver()
+
     # begin and initialize tensorflow session
     with tf.Session() as sess:
         sess.run(init)
+
+        if checkpointFile is not None:
+            if os.path.isfile(checkpointFile + ".meta"):
+                print("Restoring model from " + checkpointFile)
+                saver.restore(sess, checkpointFile)
 
         # iterate forever training model
         step = 1
@@ -160,6 +169,10 @@ def run_nn(tf_input, tf_expected, train_op, loss_op, accuracy, predictions, corr
 
             # check accuracy every N iterations
             if step % display_step == 0 or step == 1:
+
+                #save the trainer
+                if checkpointFile is not None:
+                    saver.save(sess, checkpointFile)
 
                 # training accuracy
                 training_loss, training_accuracy, training_preds, training_correct_preds = sess.run([loss_op, accuracy, predictions, correct_pred], feed_dict={tf_input: TrainingData[training_nums], tf_expected: OneHotTrainingLabels[training_nums]})

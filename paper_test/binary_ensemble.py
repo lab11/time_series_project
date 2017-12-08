@@ -4,8 +4,17 @@ import tensorflow as tf
 import numpy as np
 from sklearn import datasets
 import sys
+import os
+import argparse
 
 from plaid_data_setup import get_input_len, get_labels_len, run_nn
+
+#grab input arguments
+parser = argparse.ArgumentParser(description='get checkpoint file')
+parser.add_argument('-s', dest = "checkpointFile", type=str)
+args = parser.parse_args()
+checkpointFile = args.checkpointFile
+
 
 # Config:
 n_hidden    = 30
@@ -67,5 +76,5 @@ correct_pred = tf.equal(predictions, tf.argmax(Y, 1)) # check the index with the
 accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32)) # percentage of traces that were correct
 
 # train the neural network on test data
-run_nn(X, Y, train_op, loss_op, accuracy, predictions, correct_pred)
+run_nn(checkpointFile, X, Y, train_op, loss_op, accuracy, predictions, correct_pred)
 
