@@ -62,9 +62,10 @@ optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
 train_op = optimizer.minimize(loss_op)
 
 # Evaluate
-correct_pred = tf.equal(tf.argmax(prediction, 1), tf.argmax(Y, 1)) # check the index with the largest value
+predictions = tf.argmax(prediction, 1)
+correct_pred = tf.equal(predictions, tf.argmax(Y, 1)) # check the index with the largest value
 accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32)) # percentage of traces that were correct
 
 # train the neural network on test data
-run_nn(X, Y, train_op, loss_op, accuracy, correct_pred)
+run_nn(X, Y, train_op, loss_op, accuracy, predictions, correct_pred)
 

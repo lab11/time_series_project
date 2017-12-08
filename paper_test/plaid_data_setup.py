@@ -3,6 +3,7 @@
 import tensorflow as tf
 import numpy as np
 from sklearn import datasets
+from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
 import sys
 
@@ -109,7 +110,7 @@ def generate_training_and_validation (dataset, labelset, nameset, testing_percen
 
 
 # function to run neural network training
-def run_nn(tf_input, tf_expected, train_op, loss_op, accuracy, correct_pred):
+def run_nn(tf_input, tf_expected, train_op, loss_op, accuracy, predictions, correct_pred):
     # configurations
     batch_size  = 50
     display_step  = 100
@@ -161,10 +162,10 @@ def run_nn(tf_input, tf_expected, train_op, loss_op, accuracy, correct_pred):
             if step % display_step == 0 or step == 1:
 
                 # training accuracy
-                training_loss, training_accuracy, training_preds = sess.run([loss_op, accuracy, correct_pred], feed_dict={tf_input: TrainingData[training_nums], tf_expected: OneHotTrainingLabels[training_nums]})
+                training_loss, training_accuracy, training_preds, training_correct_preds = sess.run([loss_op, accuracy, predictions, correct_pred], feed_dict={tf_input: TrainingData[training_nums], tf_expected: OneHotTrainingLabels[training_nums]})
 
                 # validation accuracy
-                validation_loss, validation_accuracy, validation_preds = sess.run([loss_op, accuracy, correct_pred], feed_dict={tf_input: ValidationData[validation_nums], tf_expected: OneHotValidationLabels[validation_nums]})
+                validation_loss, validation_accuracy, validation_preds, validation_correct_preds = sess.run([loss_op, accuracy, predictions, correct_pred], feed_dict={tf_input: ValidationData[validation_nums], tf_expected: OneHotValidationLabels[validation_nums]})
 
                 # print overal statistics
                 print("Step " + str(step) + \
@@ -175,15 +176,15 @@ def run_nn(tf_input, tf_expected, train_op, loss_op, accuracy, correct_pred):
                 print("  Class                    | Training (cnt) | Validation (cnt)")
                 for label in range(len(labelstrs)):
                     label_indices = np.flatnonzero((TrainingLabels == label))
-                    t_result = np.mean(training_preds[label_indices])
+                    t_result = np.mean(training_correct_preds[label_indices])
                     t_count = len(label_indices)
 
                     label_indices = np.flatnonzero((ValidationLabels == label))
-                    v_result = np.mean(validation_preds[label_indices])
+                    v_result = np.mean(validation_correct_preds[label_indices])
                     v_count = len(label_indices)
 
                     labelstr = labelstrs[label]
 
                     print("  {:s} |    {:.3f} ({:3d}) |      {:.3f} ({:3d})".format(labelstr, t_result, t_count, v_result, v_count))
                 print("  Total                    |    {:.3f}       |      {:.3f}".format(training_accuracy, validation_accuracy))
-
+                print(confusion_matrix(ValidationLabels[validation_nums], validation_preds))
