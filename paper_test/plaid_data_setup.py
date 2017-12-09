@@ -129,13 +129,13 @@ def generate_training_and_validation (dataset, labelset, nameset, testing_percen
 
 
 # function to run neural network training
-def run_nn(tf_input, tf_expected, train_op, loss_op, accuracy, predictions, correct_pred):
+def run_nn(tf_input, tf_expected, train_op, loss_op, accuracy, predictions, correct_pred, generated_data):
     # configurations
     batch_size  = 50
     display_step  = 100
 
     # create various test data
-    TrainingData, ValidationData, TrainingLabels, ValidationLabels, labelstrs = gen_data()
+    TrainingData, ValidationData, TrainingLabels, ValidationLabels, labelstrs = generated_data
 
     # determine probabilities of selection for each trace
     #  - the probability of selecting each class should be equal

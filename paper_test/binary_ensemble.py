@@ -6,7 +6,7 @@ from sklearn import datasets
 import sys
 import os
 
-from plaid_data_setup import get_input_len, get_labels_len, run_nn
+from plaid_data_setup import get_input_len, get_labels_len, run_nn, gen_data
 
 
 # Config:
@@ -69,5 +69,5 @@ correct_pred = tf.equal(predictions, tf.argmax(Y, 1)) # check the index with the
 accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32)) # percentage of traces that were correct
 
 # train the neural network on test data
-run_nn(X, Y, train_op, loss_op, accuracy, predictions, correct_pred)
+run_nn(X, Y, train_op, loss_op, accuracy, predictions, correct_pred, gen_data())
 
