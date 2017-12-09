@@ -9,10 +9,11 @@ from plaid_data_setup import get_input_len, get_labels_len, run_nn
 
 
 # Config:
-n_hidden      = 30*11
-n_input       = get_input_len()
-n_labels      = get_labels_len()
-learning_rate = 0.001
+n_hidden         = 30*11
+n_input          = get_input_len()
+n_labels         = get_labels_len()
+learning_rate    = 0.001
+drop_probability = 0.50
 
 
 # neural network inputs and expected results
@@ -32,8 +33,11 @@ biases = {
 def neural_net(x):
     # hidden fully connected layer
     layer_1 = tf.nn.relu(tf.add(tf.matmul(x, weights['h1']), biases['b1']))
+    # dropout on hidden layer
+    keep_prob = tf.constant(1.0 - drop_probability)
+    layer_1_drop = tf.nn.dropout(layer_1, keep_prob)
     # output fully connected layer, neuron for each class
-    out_layer = tf.matmul(layer_1, weights['out']) + biases['out']
+    out_layer = tf.matmul(layer_1_drop, weights['out']) + biases['out']
     return out_layer
 
 # construct model
