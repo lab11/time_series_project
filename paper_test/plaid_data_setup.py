@@ -30,6 +30,7 @@ def gen_data():
     Data = data[:, 0:-2]
     Labels = data[:,-1]
     Names = data[:,-2]
+    num_names = np.max(Names) + 1
 
     # normalize all waveform magnitude to the maximum for that type
     Data[:, :500] /= np.amax(np.absolute(Data[:, :500])) # current
@@ -47,9 +48,9 @@ def gen_data():
         sys.exit()
 
     # generate training and validation datasets (already shuffled)
-    TrainingData, TrainingLabels, ValidationData, ValidationLabels = generate_training_and_validation(Data, Labels, Names, 0.20)
+    TrainingData, TrainingLabels, TrainingNames, ValidationData, ValidationLabels, ValidationNames = generate_training_and_validation(Data, Labels, Names, 0.20)
 
-    return (TrainingData, ValidationData, TrainingLabels, ValidationLabels, labelstrs)
+    return (TrainingData, ValidationData, TrainingLabels, ValidationLabels, TrainingNames, ValidationNames, labelstrs, num_names)
 
 def get_input_len():
     # length of data dimension, minus 2 (label and name)
@@ -71,6 +72,8 @@ def generate_training_and_validation (dataset, labelset, nameset, testing_percen
         validation_data =   np.empty((0, data_len))
     training_labels =   np.empty((0, data_len))
     validation_labels = np.empty((0, data_len))
+    training_names =   np.empty((0, data_len))
+    validation_names = np.empty((0, data_len))
 
     for label in sorted(range(int(max(labelset+1)))):
         # find indices matching this class
@@ -99,6 +102,7 @@ def generate_training_and_validation (dataset, labelset, nameset, testing_percen
             device_matching_indices = np.flatnonzero((matching_names == name))
             validation_data = np.vstack((validation_data, matching_data[device_matching_indices]))
             validation_labels = np.append(validation_labels, matching_labels[device_matching_indices])
+            validation_names = np.append(validation_names, matching_names[device_matching_indices])
 
             # add trace count from selected device
             selected_count += unique_name_counts[index]
@@ -115,17 +119,20 @@ def generate_training_and_validation (dataset, labelset, nameset, testing_percen
             device_matching_indices = np.flatnonzero((matching_names == name))
             training_data = np.vstack((training_data, matching_data[device_matching_indices]))
             training_labels = np.append(training_labels, matching_labels[device_matching_indices])
+            training_names = np.append(training_names, matching_names[device_matching_indices])
 
     # shuffle the validation and data arrays
     permutation = np.random.permutation(training_data.shape[0])
     shuffled_training_data = training_data[permutation]
     shuffled_training_labels = training_labels[permutation]
+    shuffled_training_names = training_names[permutation]
     permutation = np.random.permutation(validation_data.shape[0])
     shuffled_validation_data = validation_data[permutation]
     shuffled_validation_labels = validation_labels[permutation]
+    shuffled_validation_names = validation_names[permutation]
 
     # complete! Return data
-    return shuffled_training_data, shuffled_training_labels, shuffled_validation_data, shuffled_validation_labels
+    return shuffled_training_data, shuffled_training_labels, shuffled_training_names, shuffled_validation_data, shuffled_validation_labels, shuffled_validation_names
 
 
 # function to run neural network training
@@ -135,7 +142,7 @@ def run_nn(tf_input, tf_expected, train_op, loss_op, accuracy, predictions, corr
     display_step  = 100
 
     # create various test data
-    TrainingData, ValidationData, TrainingLabels, ValidationLabels, labelstrs = generated_data
+    TrainingData, ValidationData, TrainingLabels, ValidationLabels, TrainingNames, ValidationNames, labelstrs, num_names = generated_data
 
     # determine probabilities of selection for each trace
     #  - the probability of selecting each class should be equal
@@ -174,6 +181,18 @@ def run_nn(tf_input, tf_expected, train_op, loss_op, accuracy, predictions, corr
                 print("Restoring model from " + checkpointFile)
                 saver.restore(sess, checkpointFile)
 
+        id_to_labels = np.zeros(num_names.astype(int))
+        for i in range(0, num_names.astype(int)):
+            index = np.where(TrainingNames == i)
+            if(len(index[0]) > 0):
+                id_to_labels[i] = TrainingLabels[index[0][0]]
+
+        for i in range(0, num_names.astype(int)):
+            index = np.where(ValidationNames == i)
+            if(len(index[0]) > 0):
+                id_to_labels[i] = ValidationLabels[index[0][0]]
+
+
         # iterate forever training model
         step = 1
         while True:
@@ -195,8 +214,36 @@ def run_nn(tf_input, tf_expected, train_op, loss_op, accuracy, predictions, corr
                 # training accuracy
                 training_loss, training_accuracy, training_preds, training_correct_preds = sess.run([loss_op, accuracy, predictions, correct_pred], feed_dict={tf_input: TrainingData[training_nums], tf_expected: OneHotTrainingLabels[training_nums]})
 
+                #calculate device grouped accuracy
+                one_hot_preds = np.transpose(np.eye(len(labelstrs))[training_preds])
+                ids = np.reshape(TrainingNames,[-1])
+                one_hot_ids = np.eye(num_names.astype(int))[ids.astype(int)]
+                votes = np.matmul(one_hot_preds, one_hot_ids)
+                votes = np.transpose(votes)
+                good_votes = np.amax(votes,1)
+                not_included = np.not_equal(good_votes, 0)
+                voted_labels = np.argmax(votes, 1)
+                filtered_votes = voted_labels[not_included]
+                filtered_labels = id_to_labels[not_included]
+                grouped_correct = filtered_votes == filtered_labels
+                training_grouped_accuracy = np.mean(grouped_correct)
+
                 # validation accuracy
                 validation_loss, validation_accuracy, validation_preds, validation_correct_preds = sess.run([loss_op, accuracy, predictions, correct_pred], feed_dict={tf_input: ValidationData[validation_nums], tf_expected: OneHotValidationLabels[validation_nums]})
+
+                #calculate device grouped accuracy
+                one_hot_preds = np.transpose(np.eye(len(labelstrs))[validation_preds])
+                ids = np.reshape(ValidationNames,[-1])
+                one_hot_ids = np.eye(num_names.astype(int))[ids.astype(int)]
+                votes = np.matmul(one_hot_preds, one_hot_ids)
+                votes = np.transpose(votes)
+                good_votes = np.amax(votes,1)
+                not_included = np.not_equal(good_votes, 0)
+                voted_labels = np.argmax(votes, 1)
+                filtered_votes = voted_labels[not_included]
+                filtered_labels = id_to_labels[not_included]
+                grouped_correct = filtered_votes == filtered_labels
+                validation_grouped_accuracy = np.mean(grouped_correct)
 
                 # print overal statistics
                 print("Step " + str(step) + \
@@ -218,6 +265,7 @@ def run_nn(tf_input, tf_expected, train_op, loss_op, accuracy, predictions, corr
 
                     print("  {:s} |    {:.3f} ({:3d}) |      {:.3f} ({:3d})".format(labelstr, t_result, t_count, v_result, v_count))
                 print("  Total                    |    {:.3f}       |      {:.3f}".format(training_accuracy, validation_accuracy))
+                print("  Grouped Total            |    {:.3f}       |      {:.3f}".format(training_grouped_accuracy, validation_grouped_accuracy))
                 print(confusion_matrix(ValidationLabels[validation_nums], validation_preds))
 
             if maxstep != -1 and step >= maxstep:
