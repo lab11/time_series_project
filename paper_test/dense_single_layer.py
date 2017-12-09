@@ -1,5 +1,4 @@
 #! /usr/bin/env python3
-                confusion = tf.confusion_matrix(labels
 
 import tensorflow as tf
 import numpy as np
