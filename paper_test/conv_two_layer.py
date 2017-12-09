@@ -5,7 +5,6 @@ import numpy as np
 from sklearn import datasets
 import matplotlib.pyplot as plt
 import sys
-import argparse
 
 # ensure that we always "randomly" run in a repeatable way
 RANDOM_SEED = 21
@@ -200,12 +199,6 @@ def run_nn(checkpointFile, tf_input, tf_expected, train_op, loss_op, accuracy, p
                 print("  Total                    |    {:.3f}       |      {:.3f}".format(training_accuracy, validation_accuracy))
                 #print(confusion_matrix(ValidationLabels[validation_nums], validation_preds))
 
-#grab input arguments
-parser = argparse.ArgumentParser(description='get checkpoint file')
-parser.add_argument('-s', dest = "checkpointFile", type=str)
-args = parser.parse_args()
-checkpointFile = args.checkpointFile
-
 
 # Config:
 conv_filt_size = 20
@@ -260,6 +253,6 @@ correct_pred = tf.equal(predictions, tf.argmax(Y, 1)) # check the index with the
 accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32)) # percentage of traces that were correct
 
 # train the neural network on test data
-run_nn(checkpointFile, X, Y, train_op, loss_op, accuracy, predictions, correct_pred)
+run_nn(X, Y, train_op, loss_op, accuracy, predictions, correct_pred)
 
 

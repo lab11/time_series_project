@@ -7,11 +7,20 @@ from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
 import sys
 import os
+import argparse
 
 # ensure that we always "randomly" run in a repeatable way
 RANDOM_SEED = 21
 tf.set_random_seed(RANDOM_SEED)
 np.random.seed(RANDOM_SEED)
+
+#grab input arguments
+parser = argparse.ArgumentParser(description='Run neural network')
+parser.add_argument('-s', dest = "checkpointFile", type=str)
+parser.add_argument('-n', dest = "maxstep", type=int, default=-1)
+args = parser.parse_args()
+checkpointFile = args.checkpointFile
+maxstep = args.maxstep
 
 # function to create the training and validation datasets
 def gen_data():
@@ -111,7 +120,7 @@ def generate_training_and_validation (dataset, labelset, nameset, testing_percen
 
 
 # function to run neural network training
-def run_nn(checkpointFile, tf_input, tf_expected, train_op, loss_op, accuracy, predictions, correct_pred):
+def run_nn(tf_input, tf_expected, train_op, loss_op, accuracy, predictions, correct_pred):
     # configurations
     batch_size  = 50
     display_step  = 100
@@ -201,3 +210,8 @@ def run_nn(checkpointFile, tf_input, tf_expected, train_op, loss_op, accuracy, p
                     print("  {:s} |    {:.3f} ({:3d}) |      {:.3f} ({:3d})".format(labelstr, t_result, t_count, v_result, v_count))
                 print("  Total                    |    {:.3f}       |      {:.3f}".format(training_accuracy, validation_accuracy))
                 print(confusion_matrix(ValidationLabels[validation_nums], validation_preds))
+
+            if maxstep != -1 and step >= maxstep:
+                print("Completed at step " + str(step))
+                sys.exit()
+
