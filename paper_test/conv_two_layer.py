@@ -3,7 +3,6 @@
 import tensorflow as tf
 import numpy as np
 from sklearn import datasets
-import matplotlib.pyplot as plt
 import sys
 
 from plaid_data_setup import run_nn, generate_training_and_validation
@@ -15,14 +14,12 @@ def gen_data():
     np.random.shuffle(data)
     Data = data[:, 0:-2]
 
-    # normalize all waveform magnitude to the maximum for that type
-    data_len = len(Data[0])
-    Data[:, :data_len/2] /= np.amax(np.absolute(Data[:, :data_len/2])) # current
-    Data[:, data_len/2:] /= np.amax(np.absolute(Data[:, data_len/2:])) # voltage
-
     Data = np.reshape(Data, (Data.shape[0], int(Data.shape[1]/2), 2), 'F')
+    Data[:,:,0] /= np.amax(np.absolute(Data[:,:,0])) # current
+    Data[:,:,1] /= np.amax(np.absolute(Data[:,:,1])) # voltage
     Labels = data[:,-1]
     Names = data[:,-2]
+    num_names = np.max(Names) + 1
 
     # get label string names and pad spaces to make them equal length
     labelstrs = np.load("../plaid_data/traces_class_map.npy")
@@ -36,9 +33,9 @@ def gen_data():
         sys.exit()
 
     # generate training and validation datasets (already shuffled)
-    TrainingData, TrainingLabels, ValidationData, ValidationLabels = generate_training_and_validation(Data, Labels, Names, 0.20)
+    TrainingData, TrainingLabels, TrainingNames, ValidationData, ValidationLabels, ValidationNames = generate_training_and_validation(Data, Labels, Names, 0.20)
 
-    return (TrainingData, ValidationData, TrainingLabels, ValidationLabels, labelstrs)
+    return (TrainingData, ValidationData, TrainingLabels, ValidationLabels, TrainingNames, ValidationNames, labelstrs, num_names)
 
 def get_input_len():
     # length of data dimension, minus 2 (label and name)
@@ -82,9 +79,9 @@ def neural_net(x):
     #reshape the conv output to be flat
     conv_1_out = tf.reshape(conv_1, [-1,n_input*n_conv_filts])
     # hidden fully connected layer
-    layer_1 = tf.nn.relu(tf.add(tf.matmul(conv_1_out, weights['h1']), biases['b1']))
+    layer_1 = tf.nn.tanh(tf.add(tf.matmul(conv_1_out, weights['h1']), biases['b1']))
     # add some dropout
-    layer_1_drop = tf.nn.dropout(layer_1, 1.0 - drop_probability)
+    layer_1_drop = tf.nn.dropout(layer_1, tf.constant(1.0 - drop_probability))
     # output fully connected layer, neuron for each class
     out_layer = tf.matmul(layer_1_drop, weights['out']) + biases['out']
     return out_layer
