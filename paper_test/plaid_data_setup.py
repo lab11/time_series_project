@@ -34,8 +34,6 @@ def gen_data():
 
     # normalize all waveform magnitude to the maximum for that type
     data_len = len(Data[0])
-    print(data_len)
-    sys.exit()
     Data[:, :data_len/2] /= np.amax(np.absolute(Data[:, :data_len/2])) # current
     Data[:, data_len/2:] /= np.amax(np.absolute(Data[:, data_len/2:])) # voltage
 
