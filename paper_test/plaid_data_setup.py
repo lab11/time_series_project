@@ -137,7 +137,7 @@ def generate_training_and_validation (dataset, labelset, nameset, testing_percen
 
 
 # function to run neural network training
-def run_nn(tf_input, tf_expected, train_op, loss_op, accuracy, predictions, correct_pred, generated_data):
+def run_nn(tf_input, tf_expected, train_op, loss_op, accuracy, predictions, pred_scores, correct_pred, generated_data):
     # configurations
     batch_size  = 50
     display_step  = 100
@@ -213,46 +213,64 @@ def run_nn(tf_input, tf_expected, train_op, loss_op, accuracy, predictions, corr
                     saver.save(sess, checkpointFile)
 
                 # training accuracy
-                training_loss, training_accuracy, training_preds, training_correct_preds = sess.run([loss_op, accuracy, predictions, correct_pred], feed_dict={tf_input: TrainingData[training_nums], tf_expected: OneHotTrainingLabels[training_nums]})
+                training_loss, training_accuracy, training_preds, training_pred_scores, training_correct_preds = sess.run([loss_op, accuracy, predictions,pred_scores, correct_pred], feed_dict={tf_input: TrainingData[training_nums], tf_expected: OneHotTrainingLabels[training_nums]})
 
                 #calculate device grouped accuracy
                 one_hot_preds = np.transpose(np.eye(len(labelstrs))[training_preds])
+                one_hot_weighted_preds = np.dot(one_hot_preds,np.diag(training_pred_scores))
                 ids = np.reshape(TrainingNames,[-1])
                 one_hot_ids = np.eye(num_names.astype(int))[ids.astype(int)]
                 votes = np.matmul(one_hot_preds, one_hot_ids)
+                weighted_votes = np.matmul(one_hot_weighted_preds, one_hot_ids)
                 votes = np.transpose(votes)
+                weighted_votes = np.transpose(weighted_votes)
                 good_votes = np.amax(votes,1)
+                weighted_good_votes = np.amax(weighted_votes,1)
                 not_included = np.not_equal(good_votes, 0)
                 voted_labels = np.argmax(votes, 1)
+                weighted_voted_labels = np.argmax(weighted_votes, 1)
                 filtered_votes = voted_labels[not_included]
+                filtered_weighted_votes = weighted_voted_labels[not_included]
                 filtered_labels = id_to_labels[not_included]
                 grouped_correct = filtered_votes == filtered_labels
+                weighted_grouped_correct = filtered_weighted_votes == filtered_labels
                 training_grouped_accuracy = np.mean(grouped_correct)
+                training_grouped_weighted_accuracy = np.mean(weighted_grouped_correct)
 
                 # validation accuracy
-                validation_loss, validation_accuracy, validation_preds, validation_correct_preds = sess.run([loss_op, accuracy, predictions, correct_pred], feed_dict={tf_input: ValidationData[validation_nums], tf_expected: OneHotValidationLabels[validation_nums]})
+                validation_loss, validation_accuracy, validation_preds, validation_pred_scores, validation_correct_preds = sess.run([loss_op, accuracy, predictions, pred_scores, correct_pred], feed_dict={tf_input: ValidationData[validation_nums], tf_expected: OneHotValidationLabels[validation_nums]})
 
                 #calculate device grouped accuracy
                 one_hot_preds = np.transpose(np.eye(len(labelstrs))[validation_preds])
+                one_hot_weighted_preds = np.dot(one_hot_preds,np.diag(validation_pred_scores))
                 ids = np.reshape(ValidationNames,[-1])
                 one_hot_ids = np.eye(num_names.astype(int))[ids.astype(int)]
                 votes = np.matmul(one_hot_preds, one_hot_ids)
+                weighted_votes = np.matmul(one_hot_weighted_preds, one_hot_ids)
                 votes = np.transpose(votes)
+                weighted_votes = np.transpose(weighted_votes)
                 good_votes = np.amax(votes,1)
+                weighted_good_votes = np.amax(weighted_votes,1)
                 not_included = np.not_equal(good_votes, 0)
                 voted_labels = np.argmax(votes, 1)
+                weighted_voted_labels = np.argmax(weighted_votes, 1)
                 filtered_votes = voted_labels[not_included]
+                filtered_weighted_votes = weighted_voted_labels[not_included]
                 filtered_labels = id_to_labels[not_included]
                 grouped_correct = filtered_votes == filtered_labels
+                weighted_grouped_correct = filtered_weighted_votes == filtered_labels
                 validation_grouped_accuracy = np.mean(grouped_correct)
+                validation_grouped_weighted_accuracy = np.mean(weighted_grouped_correct)
 
                 # print overal statistics
                 print("Step " + str(step) + \
                         ", Training Loss= " + "{: >8.3f}".format(training_loss) + \
                         ", Validation Loss= " + "{: >8.3f}".format(validation_loss))
+                print("--------------------------------------------------------------")
 
                 # determine per-class results and print
                 print("  Class                    | Training (cnt) | Validation (cnt)")
+                print("--------------------------------------------------------------")
                 for label in range(len(labelstrs)):
                     label_indices = np.flatnonzero((TrainingLabels == label))
                     t_result = np.mean(training_correct_preds[label_indices])
@@ -265,8 +283,10 @@ def run_nn(tf_input, tf_expected, train_op, loss_op, accuracy, predictions, corr
                     labelstr = labelstrs[label]
 
                     print("  {:s} |    {:.3f} ({:3d}) |      {:.3f} ({:3d})".format(labelstr, t_result, t_count, v_result, v_count))
+                print("--------------------------------------------------------------")
                 print("  Total                    |    {:.3f}       |      {:.3f}".format(training_accuracy, validation_accuracy))
                 print("  Grouped Total            |    {:.3f}       |      {:.3f}".format(training_grouped_accuracy, validation_grouped_accuracy))
+                print("  Weighted Grouped Total   |    {:.3f}       |      {:.3f}".format(training_grouped_weighted_accuracy, validation_grouped_weighted_accuracy))
                 print(confusion_matrix(ValidationLabels[validation_nums], validation_preds))
 
             if maxstep != -1 and step >= maxstep:

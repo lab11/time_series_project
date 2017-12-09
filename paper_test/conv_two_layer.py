@@ -97,10 +97,11 @@ train_op = optimizer.minimize(loss_op)
 
 # Evaluate
 predictions = tf.argmax(prediction, 1)
+pred_scores = tf.reduce_max(prediction, 1)
 correct_pred = tf.equal(predictions, tf.argmax(Y, 1)) # check the index with the largest value
 accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32)) # percentage of traces that were correct
 
 # train the neural network on test data
-run_nn(X, Y, train_op, loss_op, accuracy, predictions, correct_pred, gen_data())
+run_nn(X, Y, train_op, loss_op, accuracy, predictions, pred_scores, correct_pred, gen_data())
 
 
