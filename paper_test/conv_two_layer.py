@@ -16,8 +16,9 @@ def gen_data():
     Data = data[:, 0:-2]
 
     # normalize all waveform magnitude to the maximum for that type
-    Data[:, :500] /= np.amax(np.absolute(Data[:, :500])) # current
-    Data[:, 500:] /= np.amax(np.absolute(Data[:, 500:])) # voltage
+    data_len = len(Data[0])
+    Data[:, :data_len/2] /= np.amax(np.absolute(Data[:, :data_len/2])) # current
+    Data[:, data_len/2:] /= np.amax(np.absolute(Data[:, data_len/2:])) # voltage
 
     Data = np.reshape(Data, (Data.shape[0], int(Data.shape[1]/2), 2), 'F')
     Labels = data[:,-1]

@@ -32,8 +32,11 @@ def gen_data():
     Names = data[:,-2]
 
     # normalize all waveform magnitude to the maximum for that type
-    Data[:, :500] /= np.amax(np.absolute(Data[:, :500])) # current
-    Data[:, 500:] /= np.amax(np.absolute(Data[:, 500:])) # voltage
+    data_len = len(Data[0])
+    print(data_len)
+    sys.exit()
+    Data[:, :data_len/2] /= np.amax(np.absolute(Data[:, :data_len/2])) # current
+    Data[:, data_len/2:] /= np.amax(np.absolute(Data[:, data_len/2:])) # voltage
 
     # get label string names and pad spaces to make them equal length
     labelstrs = np.load("../plaid_data/traces_class_map.npy")
