@@ -61,10 +61,15 @@ def get_labels_len():
 
 # function to generate a training and validation, with equal label representation
 def generate_training_and_validation (dataset, labelset, nameset, testing_percent):
-    data_len = np.shape(dataset)[1]
-    training_data = np.empty((0,data_len))
-    training_labels = np.empty((0, data_len))
-    validation_data = np.empty((0, data_len))
+    data_len = dataset.shape[1]
+    if len(dataset.shape) > 2:
+        channels = dataset.shape[2]
+        training_data =     np.empty((0, data_len, channels))
+        validation_data =   np.empty((0, data_len, channels))
+    else:
+        training_data =     np.empty((0, data_len))
+        validation_data =   np.empty((0, data_len))
+    training_labels =   np.empty((0, data_len))
     validation_labels = np.empty((0, data_len))
 
     for label in sorted(range(int(max(labelset+1)))):
