@@ -32,7 +32,7 @@ biases = {
 
 def neural_net(x):
     # hidden fully connected layer
-    layer_1 = tf.nn.relu(tf.add(tf.matmul(x, weights['h1']), biases['b1']))
+    layer_1 = tf.nn.tanh(tf.add(tf.matmul(x, weights['h1']), biases['b1']))
     # dropout on hidden layer
     keep_prob = tf.constant(1.0 - drop_probability)
     layer_1_drop = tf.nn.dropout(layer_1, keep_prob)
