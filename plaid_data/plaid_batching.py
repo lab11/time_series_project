@@ -4,6 +4,7 @@ import json
 import os
 import pathlib
 import sys
+import matplotlib.pyplot as plt
 
 # check that the PLAID dataset already exists
 if not (os.path.exists("PLAID/") and os.path.isdir("PLAID/")):
@@ -45,7 +46,6 @@ for datasetname in sorted(metadata.keys()):
         # determine input and output files
         data_filename = 'numpy_arrays/' + data_id + '.npy'
         out_filename = 'plaid_paper_batch_data/' + device_class + '-' + device_state + '-' + device_full_name + '-file' + data_id + '.npy'
-        print(data_filename, out_filename)
 
         # read input file
         data = np.load(data_filename)
@@ -58,13 +58,25 @@ for datasetname in sorted(metadata.keys()):
         period_len = int(frequency / 60)
         zero_crossings = np.where(np.diff(np.signbit(voltage)))[0]
         end = data.shape[0]
-        for z_cross in np.flip(zero_crossings, 0):
-            if voltage[z_cross - 1] < 0:
-                end = z_cross
-                break;
-        two_periods = data[z_cross + 1 - period_len * n_cycles: z_cross + 1]
+        periods = []
+        counter = 0
+        power = np.multiply(voltage,current)
+        last_cross = 0
+        for z_cross in zero_crossings:
+            if not counter % 25:
+                if np.mean(power[last_cross:z_cross]) > 5:
+                    if(len(data[z_cross + 1 - period_len * n_cycles: z_cross +1]) == 500):
+                        periods.append(data[z_cross + 1 - period_len * n_cycles: z_cross +1])
+                    else:
+                        print("Warning")
+
+            last_cross = z_cross
+            counter += 1
 
         # write output file
-        output_data = two_periods
-        np.save(out_filename, output_data)
+        for i in range(0,len(periods)):
+            newfname = out_filename[:-4]
+            newfname = newfname + "_" + str(i) + ".npy"
+            print(data_filename, newfname)
+            np.save(newfname, periods[i])
 
