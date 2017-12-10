@@ -48,10 +48,10 @@ def parse(fname):
     print('    ' + fname)
     a = np.loadtxt(fname, delimiter=";", dtype=str)
     converted = np.ndarray(a.shape, dtype = int)
-    for measurement, entry in zip(a, converted):
+    for i, measurement in enumerate(a):
         time = arrow.get(measurement[0],'DD/MM/YYYY HH:mm:ss')
         time_begin = time.floor('day')
-        entry[0]= (time - time_begin).seconds
+        converted[i, 0]= (time - time_begin).seconds
     converted[:,1:] = a[:,1:].astype(int)
 
     # save numpy array
@@ -64,7 +64,10 @@ def parse(fname):
             basename = basename[1:]
         basename = 'dev_' + basename
     outfilename = "numpy_arrays/" +dev_class + '_' +basename
-    np.save(outfilename, a)
+    np.save(outfilename, converted)
 
-p = Pool(50)
+p = Pool(16)
 p.map(parse,sorted(fnames))
+
+#for fname in fnames:
+#    parse(fname)
