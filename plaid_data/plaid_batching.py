@@ -9,7 +9,7 @@ import sys
 if not (os.path.exists("PLAID/") and os.path.isdir("PLAID/")):
     print("PLAID not downloaded yet. Run `plaid_serializer.py`")
     sys.exit()
-if not (os.path.exists("numpy_arrays/") and os.path.isdir("PLAID/")):
+if not (os.path.exists("powerblade_arrays/") and os.path.isdir("PLAID/")):
     print("numpy arrays not created yet. Run `plaid_serializer.py`")
     sys.exit()
 
@@ -43,7 +43,7 @@ for datasetname in sorted(metadata.keys()):
         device_full_name = datasetname + '_' + location + '_' + device_appliance + '_' + device_class
 
         # determine input and output files
-        data_filename = 'numpy_arrays/' + data_id + '.npy'
+        data_filename = 'powerblade_arrays/' + data_id + '.npy'
         out_filename = 'plaid_paper_batch_data/' + device_class + '-' + device_state + '-' + device_full_name + '-file' + data_id + '.npy'
         print(data_filename, out_filename)
 
@@ -52,7 +52,7 @@ for datasetname in sorted(metadata.keys()):
 
         #select last N full cycles from data
         n_cycles = 1
-        frequency = 30000
+        frequency = 42*60
         voltage = data[:,1]
         current = data[:,0]
         period_len = int(frequency / 60)

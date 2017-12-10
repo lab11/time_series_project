@@ -27,15 +27,15 @@ def gen_data():
     # load and shuffle data
     data = np.load("../plaid_data/traces_bundle.npy")
     np.random.shuffle(data)
-    Data = data[:, 0:-2]
+    Data = data[:, 0:int((len(data[0])-2)/2)]
     Labels = data[:,-1]
     Names = data[:,-2]
     num_names = np.max(Names) + 1
 
     # normalize all waveform magnitude to the maximum for that type
-    data_len = len(Data[0])
+    data_len = int((len(data[0])-2))
     Data[:, :data_len//2] /= np.amax(np.absolute(Data[:, :data_len//2])) # current
-    Data[:, data_len//2:] /= np.amax(np.absolute(Data[:, data_len//2:])) # voltage
+    #Data[:, data_len//2:] /= np.amax(np.absolute(Data[:, data_len//2:])) # voltage
 
     # get label string names and pad spaces to make them equal length
     labelstrs = np.load("../plaid_data/traces_class_map.npy")
@@ -49,13 +49,13 @@ def gen_data():
         sys.exit()
 
     # generate training and validation datasets (already shuffled)
-    TrainingData, TrainingLabels, TrainingNames, ValidationData, ValidationLabels, ValidationNames = generate_training_and_validation(Data, Labels, Names, 0.20)
+    TrainingData, TrainingLabels, TrainingNames, ValidationData, ValidationLabels, ValidationNames = generate_training_and_validation(Data, Labels, Names, 0.10)
 
     return (TrainingData, ValidationData, TrainingLabels, ValidationLabels, TrainingNames, ValidationNames, labelstrs, num_names)
 
 def get_input_len():
     # length of data dimension, minus 2 (label and name)
-    return np.shape(np.load("../plaid_data/traces_bundle.npy"))[1] - 2
+    return int((np.shape(np.load("../plaid_data/traces_bundle.npy"))[1] - 2) / 2)
 
 def get_labels_len():
     # number of classes saved

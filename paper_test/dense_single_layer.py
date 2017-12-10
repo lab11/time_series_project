@@ -9,7 +9,7 @@ from plaid_data_setup import get_input_len, get_labels_len, run_nn, gen_data
 
 
 # Config:
-n_hidden         = 30*11
+n_hidden         = 30
 n_input          = get_input_len()
 n_labels         = get_labels_len()
 learning_rate    = 0.001
