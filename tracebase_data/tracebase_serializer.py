@@ -35,7 +35,7 @@ if not os.path.exists('numpy_arrays'):
     os.makedirs('numpy_arrays')
 
 # Get all the csv files names
-fnames = glob.glob("tracebase/complete/*/*.csv")
+fnames = glob.glob("tracebase/complete/*/*.csv") + glob.glob("tracebase/synthetic/*/*.csv")
 files = {} # where we keep the csv files
 
 # Iterate through files parsing and serializing as numpy arrays
