@@ -113,20 +113,48 @@ def get_length(sequence):
     length = tf.cast(length, tf.int32)
     return length
 
+def cost(output, target):
+    # cross entropy for each relevant frame
+    cross_entropy = target * tf.log(output)
+    cross_entropy = -tf.reduce_sum(cross_entropy, 2)
+    mask = tf.sign(tf.reduce_max(tf.abs(target), 2))
+    cross_entropy *= mask
+    # Average over sequence lengths
+    cross_entropy = tf.reduce_sum(cross_entropy, 1)
+    cross_entropy /= tf.reduce_sum(mask, 1)
+    return tf.reduce_mean(cross_entropy)
+
 # Load data and generate train/validate
 TrainingData, ValidationData, TrainingLabels, ValidationLabels, TrainingNames, ValidationNames, labelstrs, num_names = gen_data()
 
 # hyperparameters and config
-n_layers = 1
+n_hidden = 10
 trace_len = len(TrainingData[0,:,0])
-n_labels = np.argmax(np.unique(TrainingLabels))
-print(n_labels)
-exit()
+n_classes = np.argmax(np.unique(TrainingLabels)) + 1
 learning_rate = 0.001
 drop_probability = 0
 batch_size = 25
 
-
 X = tf.placeholder(tf.float32, (None, trace_len, 2))
 T = tf.placeholder(tf.float32, (None, trace_len, 1))
 Y = tf.placeholder(tf.float32, (None, n_classes))
+sequence = tf.placeholder(tf.float32, [None, trace_len, 2])
+
+# define network
+# LSTM layer + fully connected layer
+inputs = (T, X)
+seqlen = get_length(sequence)
+outputs, _ = tf.nn.dynamic_rnn(cell= tf.contrib.rnn.PhasedLSTMCell(n_hidden), inputs=inputs, dtype=tf.float32, sequence_length = seqlen)
+outputs_dropout = tf.nn.dropout(outputs, tf.constant(1.0 - drop_probability))
+last_output = tf.gather_nd(outputs_dropout, tf.stack([tf.range(batch_size), seqlen-1], axis=1))
+exit()
+# Everything below here is unfinished
+#
+#rnn_out = tf.squeeze(outputs[:, -1, :])
+#y = slim.fully_connected(inputs= rnn_out, num_outputs= n_classes, activation_fn=tf.nn.tanh)
+
+loss_op = cost(y, Y)
+optimizer = tf.train.AdamOptimizer(learning_rate = learning_rate)
+train_op = optimizer.minimize(loss_op)
+
+
