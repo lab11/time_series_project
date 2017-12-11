@@ -137,7 +137,7 @@ batch_size = 25
 
 X = tf.placeholder(tf.float32, (None, trace_len, 2))
 T = tf.placeholder(tf.float32, (None, trace_len, 1))
-Y = tf.placeholder(tf.float32, (None, n_classes))
+Y = tf.placeholder(tf.int32, (batch_size))
 sequence = tf.placeholder(tf.float32, [None, trace_len, 2])
 
 # define network
@@ -147,13 +147,21 @@ seqlen = get_length(sequence)
 outputs, _ = tf.nn.dynamic_rnn(cell= tf.contrib.rnn.PhasedLSTMCell(n_hidden), inputs=inputs, dtype=tf.float32, sequence_length = seqlen)
 outputs_dropout = tf.nn.dropout(outputs, tf.constant(1.0 - drop_probability))
 last_output = tf.gather_nd(outputs_dropout, tf.stack([tf.range(batch_size), seqlen-1], axis=1))
-exit()
+
 # Everything below here is unfinished
-#
+
+with tf.variable_scope('softmax'):
+    W = tf.get_variable('W', [n_hidden, n_classes])
+    b = tf.get_variable('b', [n_classes], initializer = tf.constant_initializer(0.0))
+logits = tf.matmul(last_output, W) + b
+preds = tf.nn.softmax(logits)
+correct = tf.equal(tf.cast(tf.argmax(preds,1),tf.int32), Y)
+accuracy = tf.reduce_mean(tf.cast(correct, tf.float32))
+
 #rnn_out = tf.squeeze(outputs[:, -1, :])
 #y = slim.fully_connected(inputs= rnn_out, num_outputs= n_classes, activation_fn=tf.nn.tanh)
 
-loss_op = cost(y, Y)
+loss_op = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=Y))
 optimizer = tf.train.AdamOptimizer(learning_rate = learning_rate)
 train_op = optimizer.minimize(loss_op)
 
