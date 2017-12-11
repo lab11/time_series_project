@@ -17,9 +17,11 @@ np.random.seed(RANDOM_SEED)
 #grab input arguments
 parser = argparse.ArgumentParser(description='Run neural network')
 parser.add_argument('-s', dest = "checkpointFile", type=str)
+parser.add_argument('-l', dest = "LSTMcheckpointFile", type=str)
 parser.add_argument('-n', dest = "maxstep", type=int, default=-1)
 args = parser.parse_args()
 checkpointFile = args.checkpointFile
+LSTMcheckpointFile = args.LSTMcheckpointFile
 maxstep = args.maxstep
 
 # function to create the training and validation datasets
@@ -167,16 +169,141 @@ def group_weighted_accuracy_by_device(num_classes, num_devices, predictions, pre
     weighted_grouped_correct = filtered_weighted_votes == filtered_labels
     return np.mean(weighted_grouped_correct)
 
-def train_cycle_sequence_nn(tf_input, tf_expected, optimizer, evaluation_args, generated_data):
+def train_cycle_sequence_nn(graph, tf_input, tf_expected, optimizer, evaluation_args, generated_data, cycle_classifier):
     #A cycle-sequence NN should take sequences (list which may be of dynamic size)
     #of the softmax output of a NN that attempts to classify raw cycles
 
+    batch_size = 10
+
     #by looking at the order and the distribution of these raw cycles it should
     #output the final class probability
-    pass
+    print("Training a sequence based NN...")
+    print("Attempting to run a forward pass through the specified dense NN...")
+    try:
+        classifier = getattr(__import__(cycle_classifier), 'build_nn')
+        gr, x, y, optimizer, ev_args = classifier()
+        print("Built network...")
+        training_scores, training_names, training_labels, validation_scores, validation_names, validation_labels = run_cycle_nn(gr, x, y, ev_args, generated_data)
+    except Exception as e:
+        print(str(e))
+        print("Failed to run forward pass on input data cycles. Exiting...")
+        sys.exit(1)
+
+    #okay now that we have our data, we need to package it into score lists that can be fed into the LSTM
+    unique_training_devices = np.unique(training_names)
+    training_device_data = [[] for i in range(len(unique_training_devices))]
+    unique_validation_devices = np.unique(validation_names)
+    validation_device_data = [[] for i in range(len(unique_validation_devices))]
+    training_device_label = np.zeros(len(unique_training_devices))
+    validation_device_label = np.zeros(len(unique_validation_devices))
+
+    for i in range(0, len(training_names)):
+        training_device_data[np.where(unique_training_devices == training_names[i])[0][0]].append(training_scores[i])
+        training_device_label[np.where(unique_training_devices == training_names[i])[0][0]] = training_labels[i]
+
+    for i in range(0, len(validation_names)):
+        validation_device_data[np.where(unique_validation_devices == validation_names[i])[0][0]].append(validation_scores[i])
+        validation_device_label[np.where(unique_validation_devices == validation_names[i])[0][0]] = validation_labels[i]
+
+    #convert the data into a numpy array
+    max_len = 0
+    for i in range(0, len(training_device_data)):
+        if(len(training_device_data[i]) > max_len):
+            max_len = len(training_device_data[i])
+
+    TrainingData = np.zeros((len(training_device_data), max_len, len(np.unique(training_labels))))
+    max_len = 0
+    for i in range(0, len(validation_device_data)):
+        if(len(validation_device_data[i]) > max_len):
+            max_len = len(validation_device_data[i])
+
+    ValidationData = np.zeros((len(validation_device_data), max_len, len(np.unique(training_labels))))
+
+    for i in range(0, len(training_device_data)):
+        for j in range(0, len(training_device_data[i])):
+            TrainingData[i][j] = training_device_data[i][j]
+
+    for i in range(0, len(validation_device_data)):
+        for j in range(0, len(validation_device_data[i])):
+            ValidationData[i][j] = validation_device_data[i][j]
+
+    TrainingLabels = np.array(training_device_label)
+    ValidationLabels = np.array(validation_device_label)
+    OneHotTrainingLabels = np.eye(len(np.unique(training_labels)))[TrainingLabels.astype(int)]
+    OneHotValidationLabels = np.eye(len(np.unique(validation_labels)))[ValidationLabels.astype(int)]
+
+    with graph.as_default():
+        # initialize tensorflow variables
+        init = tf.global_variables_initializer()
+
+        # create a saver object
+        saver = tf.train.Saver()
+
+        # begin and initialize tensorflow session
+        with tf.Session(graph=graph) as sess:
+            sess.run(init)
+
+            if LSTMcheckpointFile is not None:
+                if os.path.isfile(LSTMcheckpointFile + ".meta"):
+                    print("Restoring model from " + LSTMcheckpointFile)
+                    saver.restore(sess, LSTMcheckpointFile)
+
+
+            # iterate forever training model
+            step = 1
+            while True:
+                step += 1
+
+                # select data to train on and test on for this iteration
+                batch_nums = np.random.choice(TrainingData.shape[0], batch_size)
+
+                # run training
+                sess.run(optimizer, feed_dict = {tf_input: TrainingData[batch_nums], tf_expected: OneHotTrainingLabels[batch_nums]})
+
+                # check accuracy every N iterations
+                if step % display_step == 0 or step == 1:
+
+                    #save the trainer
+                    if LSTMcheckpointFile is not None:
+                        saver.save(sess, LSTMcheckpointFile)
+
+                    # training accuracy
+                    training_loss, training_accuracy, training_preds, training_pred_scores, training_correct_preds = sess.run(evaluation_args, feed_dict={tf_input: TrainingData[training_nums], tf_expected: OneHotTrainingLabels[training_nums]})
+
+                    # validation accuracy
+                    validation_loss, validation_accuracy, validation_preds, validation_pred_scores, validation_correct_preds = sess.run(evaluation_args, feed_dict={tf_input: ValidationData[validation_nums], tf_expected: OneHotValidationLabels[validation_nums]})
+
+                    # print overal statistics
+                    print("Step " + str(step) + \
+                            ", Training Loss= " + "{: >8.3f}".format(training_loss) + \
+                            ", Validation Loss= " + "{: >8.3f}".format(validation_loss))
+                    print("--------------------------------------------------------------")
+
+                    # determine per-class results and print
+                    print("  Class                    | Training (cnt) | Validation (cnt)")
+                    print("--------------------------------------------------------------")
+                    #for label in range(len(labelstrs)):
+                    #    label_indices = np.flatnonzero((TrainingLabels == label))
+                    #    t_result = np.mean(training_correct_preds[label_indices])
+                    #    t_count = len(label_indices)
+
+                    #    label_indices = np.flatnonzero((ValidationLabels == label))
+                    #    v_result = np.mean(validation_correct_preds[label_indices])
+                    #    v_count = len(label_indices)
+
+                    #    labelstr = labelstrs[label]
+
+                    #    print("  {:s} |    {:.3f} ({:3d}) |      {:.3f} ({:3d})".format(labelstr, t_result, t_count, v_result, v_count))
+                    #print("--------------------------------------------------------------")
+                    print("  Total                    |    {:.3f}       |      {:.3f}".format(training_accuracy, validation_accuracy))
+                    #print(confusion_matrix(ValidationLabels[validation_nums], validation_preds))
+
+                if maxstep != -1 and step >= maxstep:
+                    print("Completed at step " + str(step))
+                    sys.exit()
 
 # function to run neural network training
-def train_cycle_nn(tf_input, tf_expected, optimizer, evaluation_args, generated_data):
+def train_cycle_nn(graph, tf_input, tf_expected, optimizer, evaluation_args, generated_data):
     #a cycle NN takes in raw current/voltage waveforms for a cycle and attempts
     #to classify them
 
@@ -209,95 +336,96 @@ def train_cycle_nn(tf_input, tf_expected, optimizer, evaluation_args, generated_
     training_nums = range(len(TrainingData))
     validation_nums = range(len(ValidationData))
 
-    # initialize tensorflow variables
-    init = tf.global_variables_initializer()
+    with graph.as_default():
+        # initialize tensorflow variables
+        init = tf.global_variables_initializer()
 
-    # create a saver object
-    saver = tf.train.Saver()
+        # create a saver object
+        saver = tf.train.Saver()
 
-    # begin and initialize tensorflow session
-    with tf.Session() as sess:
-        sess.run(init)
+        # begin and initialize tensorflow session
+        with tf.Session(graph=graph) as sess:
+            sess.run(init)
 
-        if checkpointFile is not None:
-            if os.path.isfile(checkpointFile + ".meta"):
-                print("Restoring model from " + checkpointFile)
-                saver.restore(sess, checkpointFile)
+            if checkpointFile is not None:
+                if os.path.isfile(checkpointFile + ".meta"):
+                    print("Restoring model from " + checkpointFile)
+                    saver.restore(sess, checkpointFile)
 
-        id_to_labels = np.zeros(num_names.astype(int))
-        for i in range(0, num_names.astype(int)):
-            index = np.where(TrainingNames == i)
-            if(len(index[0]) > 0):
-                id_to_labels[i] = TrainingLabels[index[0][0]]
+            id_to_labels = np.zeros(num_names.astype(int))
+            for i in range(0, num_names.astype(int)):
+                index = np.where(TrainingNames == i)
+                if(len(index[0]) > 0):
+                    id_to_labels[i] = TrainingLabels[index[0][0]]
 
-        for i in range(0, num_names.astype(int)):
-            index = np.where(ValidationNames == i)
-            if(len(index[0]) > 0):
-                id_to_labels[i] = ValidationLabels[index[0][0]]
+            for i in range(0, num_names.astype(int)):
+                index = np.where(ValidationNames == i)
+                if(len(index[0]) > 0):
+                    id_to_labels[i] = ValidationLabels[index[0][0]]
 
 
-        # iterate forever training model
-        step = 1
-        while True:
-            step += 1
+            # iterate forever training model
+            step = 1
+            while True:
+                step += 1
 
-            # select data to train on and test on for this iteration
-            batch_nums = np.random.choice(TrainingData.shape[0], batch_size, p=TrainingData_probabilities)
+                # select data to train on and test on for this iteration
+                batch_nums = np.random.choice(TrainingData.shape[0], batch_size, p=TrainingData_probabilities)
 
-            # run training
-            sess.run(optimizer, feed_dict = {tf_input: TrainingData[batch_nums], tf_expected: OneHotTrainingLabels[batch_nums]})
+                # run training
+                sess.run(optimizer, feed_dict = {tf_input: TrainingData[batch_nums], tf_expected: OneHotTrainingLabels[batch_nums]})
 
-            # check accuracy every N iterations
-            if step % display_step == 0 or step == 1:
+                # check accuracy every N iterations
+                if step % display_step == 0 or step == 1:
 
-                #save the trainer
-                if checkpointFile is not None:
-                    saver.save(sess, checkpointFile)
+                    #save the trainer
+                    if checkpointFile is not None:
+                        saver.save(sess, checkpointFile)
 
-                # training accuracy
-                training_loss, training_accuracy, training_preds, training_pred_scores, training_correct_preds = sess.run(evaluation_args, feed_dict={tf_input: TrainingData[training_nums], tf_expected: OneHotTrainingLabels[training_nums]})
+                    # training accuracy
+                    training_loss, training_accuracy, training_preds, training_pred_scores, training_correct_preds = sess.run(evaluation_args, feed_dict={tf_input: TrainingData[training_nums], tf_expected: OneHotTrainingLabels[training_nums]})
 
-                training_grouped_accuracy = group_accuracy_by_device(len(labelstrs), num_names.astype(int), training_preds, TrainingNames, id_to_labels)
-                training_grouped_weighted_accuracy = group_weighted_accuracy_by_device(len(labelstrs), num_names.astype(int), training_preds, training_pred_scores, TrainingNames, id_to_labels)
+                    training_grouped_accuracy = group_accuracy_by_device(len(labelstrs), num_names.astype(int), training_preds, TrainingNames, id_to_labels)
+                    training_grouped_weighted_accuracy = group_weighted_accuracy_by_device(len(labelstrs), num_names.astype(int), training_preds, training_pred_scores, TrainingNames, id_to_labels)
 
-                # validation accuracy
-                validation_loss, validation_accuracy, validation_preds, validation_pred_scores, validation_correct_preds = sess.run(evaluation_args, feed_dict={tf_input: ValidationData[validation_nums], tf_expected: OneHotValidationLabels[validation_nums]})
+                    # validation accuracy
+                    validation_loss, validation_accuracy, validation_preds, validation_pred_scores, validation_correct_preds = sess.run(evaluation_args, feed_dict={tf_input: ValidationData[validation_nums], tf_expected: OneHotValidationLabels[validation_nums]})
 
-                validation_grouped_accuracy = group_accuracy_by_device(len(labelstrs), num_names.astype(int), validation_preds, ValidationNames, id_to_labels)
-                validation_grouped_weighted_accuracy = group_weighted_accuracy_by_device(len(labelstrs), num_names.astype(int), validation_preds, validation_pred_scores, ValidationNames, id_to_labels)
+                    validation_grouped_accuracy = group_accuracy_by_device(len(labelstrs), num_names.astype(int), validation_preds, ValidationNames, id_to_labels)
+                    validation_grouped_weighted_accuracy = group_weighted_accuracy_by_device(len(labelstrs), num_names.astype(int), validation_preds, validation_pred_scores, ValidationNames, id_to_labels)
 
-                # print overal statistics
-                print("Step " + str(step) + \
-                        ", Training Loss= " + "{: >8.3f}".format(training_loss) + \
-                        ", Validation Loss= " + "{: >8.3f}".format(validation_loss))
-                print("--------------------------------------------------------------")
+                    # print overal statistics
+                    print("Step " + str(step) + \
+                            ", Training Loss= " + "{: >8.3f}".format(training_loss) + \
+                            ", Validation Loss= " + "{: >8.3f}".format(validation_loss))
+                    print("--------------------------------------------------------------")
 
-                # determine per-class results and print
-                print("  Class                    | Training (cnt) | Validation (cnt)")
-                print("--------------------------------------------------------------")
-                for label in range(len(labelstrs)):
-                    label_indices = np.flatnonzero((TrainingLabels == label))
-                    t_result = np.mean(training_correct_preds[label_indices])
-                    t_count = len(label_indices)
+                    # determine per-class results and print
+                    print("  Class                    | Training (cnt) | Validation (cnt)")
+                    print("--------------------------------------------------------------")
+                    for label in range(len(labelstrs)):
+                        label_indices = np.flatnonzero((TrainingLabels == label))
+                        t_result = np.mean(training_correct_preds[label_indices])
+                        t_count = len(label_indices)
 
-                    label_indices = np.flatnonzero((ValidationLabels == label))
-                    v_result = np.mean(validation_correct_preds[label_indices])
-                    v_count = len(label_indices)
+                        label_indices = np.flatnonzero((ValidationLabels == label))
+                        v_result = np.mean(validation_correct_preds[label_indices])
+                        v_count = len(label_indices)
 
-                    labelstr = labelstrs[label]
+                        labelstr = labelstrs[label]
 
-                    print("  {:s} |    {:.3f} ({:3d}) |      {:.3f} ({:3d})".format(labelstr, t_result, t_count, v_result, v_count))
-                print("--------------------------------------------------------------")
-                print("  Total                    |    {:.3f}       |      {:.3f}".format(training_accuracy, validation_accuracy))
-                print("  Grouped Total            |    {:.3f}       |      {:.3f}".format(training_grouped_accuracy, validation_grouped_accuracy))
-                print("  Weighted Grouped Total   |    {:.3f}       |      {:.3f}".format(training_grouped_weighted_accuracy, validation_grouped_weighted_accuracy))
-                print(confusion_matrix(ValidationLabels[validation_nums], validation_preds))
+                        print("  {:s} |    {:.3f} ({:3d}) |      {:.3f} ({:3d})".format(labelstr, t_result, t_count, v_result, v_count))
+                    print("--------------------------------------------------------------")
+                    print("  Total                    |    {:.3f}       |      {:.3f}".format(training_accuracy, validation_accuracy))
+                    print("  Grouped Total            |    {:.3f}       |      {:.3f}".format(training_grouped_accuracy, validation_grouped_accuracy))
+                    print("  Weighted Grouped Total   |    {:.3f}       |      {:.3f}".format(training_grouped_weighted_accuracy, validation_grouped_weighted_accuracy))
+                    print(confusion_matrix(ValidationLabels[validation_nums], validation_preds))
 
-            if maxstep != -1 and step >= maxstep:
-                print("Completed at step " + str(step))
-                sys.exit()
+                if maxstep != -1 and step >= maxstep:
+                    print("Completed at step " + str(step))
+                    sys.exit()
 
-def run_cycle_nn(tf_input, tf_expected, evaluation_args, generated_data):
+def run_cycle_nn(graph, tf_input, tf_expected, evaluation_args, generated_data):
     #runs a forward pass on the cycle NN
 
     # create various test data
@@ -305,6 +433,7 @@ def run_cycle_nn(tf_input, tf_expected, evaluation_args, generated_data):
 
 
     # convert Labels from integers to one-hot array
+    n_classes = len(labelstrs)
     OneHotTrainingLabels = np.eye(n_classes)[TrainingLabels.astype(np.int64)]
     OneHotValidationLabels = np.eye(n_classes)[ValidationLabels.astype(np.int64)]
 
@@ -313,68 +442,79 @@ def run_cycle_nn(tf_input, tf_expected, evaluation_args, generated_data):
     validation_nums = range(len(ValidationData))
 
     # initialize tensorflow variables
-    init = tf.global_variables_initializer()
+    with graph.as_default():
 
-    # create a saver object
-    saver = tf.train.Saver()
+        init = tf.global_variables_initializer()
 
-    # begin and initialize tensorflow session
-    with tf.Session() as sess:
-        sess.run(init)
+        saver = tf.train.Saver()
 
-        if checkpointFile is not None:
-            if os.path.isfile(checkpointFile + ".meta"):
-                print("Restoring model from " + checkpointFile)
-                saver.restore(sess, checkpointFile)
+        # begin and initialize tensorflow session
+        with tf.Session(graph=graph) as sess:
+            # create a saver object
+            sess.run(init)
+
+            if checkpointFile is not None:
+                if os.path.isfile(checkpointFile + ".meta"):
+                    print("Restoring model from " + checkpointFile)
+                    saver.restore(sess, checkpointFile)
+                else:
+                    print("Network restore failed. Cannot run a forward pass with no network to restore from. Exiting.")
+                    sys.exit(1)
             else:
-                print("Cannot run a forward pass with no network to restore from. Exiting.")
+                print("Must pass restore file. Cannot run a forward pass with no network to restore from. Exiting.")
                 sys.exit(1)
 
-        id_to_labels = np.zeros(num_names.astype(int))
-        for i in range(0, num_names.astype(int)):
-            index = np.where(TrainingNames == i)
-            if(len(index[0]) > 0):
-                id_to_labels[i] = TrainingLabels[index[0][0]]
+            id_to_labels = np.zeros(num_names.astype(int))
+            for i in range(0, num_names.astype(int)):
+                index = np.where(TrainingNames == i)
+                if(len(index[0]) > 0):
+                    id_to_labels[i] = TrainingLabels[index[0][0]]
 
-        for i in range(0, num_names.astype(int)):
-            index = np.where(ValidationNames == i)
-            if(len(index[0]) > 0):
-                id_to_labels[i] = ValidationLabels[index[0][0]]
+            for i in range(0, num_names.astype(int)):
+                index = np.where(ValidationNames == i)
+                if(len(index[0]) > 0):
+                    id_to_labels[i] = ValidationLabels[index[0][0]]
 
-        # training accuracy
-        training_loss, training_accuracy, training_preds, training_pred_scores, training_correct_preds = sess.run(evaluation_args, feed_dict={tf_input: TrainingData[training_nums], tf_expected: OneHotTrainingLabels[training_nums]})
+            # training accuracy
+            training_loss, training_accuracy, training_preds, training_pred_scores, training_correct_preds = sess.run(evaluation_args, feed_dict={tf_input: TrainingData[training_nums], tf_expected: OneHotTrainingLabels[training_nums]})
 
-        training_grouped_accuracy = group_accuracy_by_device(len(labelstrs), num_names.astype(int), training_preds, TrainingNames, id_to_labels)
-        training_grouped_weighted_accuracy = group_weighted_accuracy_by_device(len(labelstrs), num_names.astype(int), training_preds, training_pred_scores, TrainingNames, id_to_labels)
+            training_grouped_accuracy = group_accuracy_by_device(len(labelstrs), num_names.astype(int), training_preds, TrainingNames, id_to_labels)
+            training_grouped_weighted_accuracy = group_weighted_accuracy_by_device(len(labelstrs), num_names.astype(int), training_preds, training_pred_scores, TrainingNames, id_to_labels)
 
-        # validation accuracy
-        validation_loss, validation_accuracy, validation_preds, validation_pred_scores, validation_correct_preds = sess.run(evaluation_args, feed_dict={tf_input: ValidationData[validation_nums], tf_expected: OneHotValidationLabels[validation_nums]})
+            # validation accuracy
+            validation_loss, validation_accuracy, validation_preds, validation_pred_scores, validation_correct_preds = sess.run(evaluation_args, feed_dict={tf_input: ValidationData[validation_nums], tf_expected: OneHotValidationLabels[validation_nums]})
 
-        validation_grouped_accuracy = group_accuracy_by_device(len(labelstrs), num_names.astype(int), validation_preds, ValidationNames, id_to_labels)
-        validation_grouped_weighted_accuracy = group_weighted_accuracy_by_device(len(labelstrs), num_names.astype(int), validation_preds, validation_pred_scores, ValidationNames, id_to_labels)
+            validation_grouped_accuracy = group_accuracy_by_device(len(labelstrs), num_names.astype(int), validation_preds, ValidationNames, id_to_labels)
+            validation_grouped_weighted_accuracy = group_weighted_accuracy_by_device(len(labelstrs), num_names.astype(int), validation_preds, validation_pred_scores, ValidationNames, id_to_labels)
 
-        print("Training Loss= " + "{: >8.3f}".format(training_loss) + \
-                ", Validation Loss= " + "{: >8.3f}".format(validation_loss))
-        print("--------------------------------------------------------------")
+            print("")
+            print("")
+            print("Training Loss= " + "{: >8.3f}".format(training_loss) + \
+                    ", Validation Loss= " + "{: >8.3f}".format(validation_loss))
+            print("--------------------------------------------------------------")
 
-        # determine per-class results and print
-        print("  Class                    | Training (cnt) | Validation (cnt)")
-        print("--------------------------------------------------------------")
-        for label in range(len(labelstrs)):
-            label_indices = np.flatnonzero((TrainingLabels == label))
-            t_result = np.mean(training_correct_preds[label_indices])
-            t_count = len(label_indices)
+            # determine per-class results and print
+            print("  Class                    | Training (cnt) | Validation (cnt)")
+            print("--------------------------------------------------------------")
+            for label in range(len(labelstrs)):
+                label_indices = np.flatnonzero((TrainingLabels == label))
+                t_result = np.mean(training_correct_preds[label_indices])
+                t_count = len(label_indices)
 
-            label_indices = np.flatnonzero((ValidationLabels == label))
-            v_result = np.mean(validation_correct_preds[label_indices])
-            v_count = len(label_indices)
+                label_indices = np.flatnonzero((ValidationLabels == label))
+                v_result = np.mean(validation_correct_preds[label_indices])
+                v_count = len(label_indices)
 
-            labelstr = labelstrs[label]
+                labelstr = labelstrs[label]
 
-            print("  {:s} |    {:.3f} ({:3d}) |      {:.3f} ({:3d})".format(labelstr, t_result, t_count, v_result, v_count))
-        print("--------------------------------------------------------------")
-        print("  Total                    |    {:.3f}       |      {:.3f}".format(training_accuracy, validation_accuracy))
-        print("  Grouped Total            |    {:.3f}       |      {:.3f}".format(training_grouped_accuracy, validation_grouped_accuracy))
-        print("  Weighted Grouped Total   |    {:.3f}       |      {:.3f}".format(training_grouped_weighted_accuracy, validation_grouped_weighted_accuracy))
-        print(confusion_matrix(ValidationLabels[validation_nums], validation_preds))
+                print("  {:s} |    {:.3f} ({:3d}) |      {:.3f} ({:3d})".format(labelstr, t_result, t_count, v_result, v_count))
+            print("--------------------------------------------------------------")
+            print("  Total                    |    {:.3f}       |      {:.3f}".format(training_accuracy, validation_accuracy))
+            print("  Grouped Total            |    {:.3f}       |      {:.3f}".format(training_grouped_accuracy, validation_grouped_accuracy))
+            print(confusion_matrix(ValidationLabels[validation_nums], validation_preds))
+            print("")
+            print("")
 
+            sess.close()
+
+            return training_pred_scores, TrainingNames, TrainingLabels, validation_pred_scores, ValidationNames, ValidationLabels
