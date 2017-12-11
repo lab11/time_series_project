@@ -14,6 +14,7 @@ class_map = []
 name_map = []
 labels = np.ndarray(len(fnames), dtype=int)
 dev_ids= np.ndarray(len(fnames), dtype=int)
+lengths = np.ndarray(len(fnames), dtype=int)
 
 index = -1
 for fname in sorted(fnames):
@@ -46,8 +47,9 @@ for fname in sorted(fnames):
 
 min_len = 60*60*24
 max_len = 0
-for trace in trace_array:
+for i, trace in enumerate(trace_array):
     length = len(trace)
+    lengths[i] = length
     if length > max_len:
         max_len = length
     elif length < min_len:
@@ -63,5 +65,6 @@ dirname = "./"
 np.save(dirname + "traces_bundle", data)
 np.save(dirname + "traces_classes", labels)
 np.save(dirname + "traces_dev_ids", dev_ids)
+np.save(dirname + "traces_lengths", lengths)
 np.save(dirname + "traces_class_map", class_map)
 np.save(dirname + "traces_name_map", name_map)
