@@ -5,6 +5,7 @@ import numpy as np
 from sklearn import datasets
 from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
+import multiprocessing as mp
 import sys
 import os
 import argparse
@@ -28,7 +29,7 @@ maxstep = args.maxstep
 in_dir = '../plaid_data/barsim_et_al_data/'
 
 # function to create the training and validation datasets
-def gen_data():
+def gen_data ():
     # load and shuffle data
     data = np.load(in_dir + "traces_bundle.npy")
     np.random.shuffle(data)
@@ -58,14 +59,91 @@ def gen_data():
 
     return (Data, Labels, Names, Houses, labelstrs, namestrs)
 
-def get_input_len():
+def get_input_len ():
     # length of data dimension, minus 3 (label, name, and house)
     return np.shape(np.load(in_dir + 'traces_bundle.npy'))[1] - 3
 
-def get_labels_len():
+def get_labels_len ():
     # number of classes saved
     return np.shape(np.load(in_dir + 'traces_class_map.npy'))[0]
 
+def train_neural_network (tf_inputs, tf_expecteds, train_ops, loss_ops, accuracy_ops, sess, \
+        Data, Labels, class_count, \
+        combo_index, class_a, class_b, combo_training_indices, combo_validation_indices):
+
+    # configurations
+    batch_size = 50
+    display_step = 100
+
+    # determine probabilities for each class
+    class_a_count = np.sum(Labels[combo_training_indices] == class_a)
+    class_a_each_prob = 0.5/class_a_count
+    class_b_count = len(combo_training_indices)-class_a_count
+    class_b_each_prob = 0.5/class_b_count
+    combo_training_probabilities = np.where((Labels[combo_training_indices] == class_a), class_a_each_prob, class_b_each_prob)
+
+    # convert labels into one-hot array
+    ClassOneHotTrainingLabels = np.eye(class_count)[Labels[combo_training_indices].astype(np.int64)]
+    OneHotComboTrainingLabels = np.transpose([ClassOneHotTrainingLabels[:, class_a], ClassOneHotTrainingLabels[:, class_b]])
+    ClassOneHotValidationLabels = np.eye(class_count)[Labels[combo_validation_indices].astype(np.int64)]
+    OneHotComboValidationLabels = np.transpose([ClassOneHotValidationLabels[:, class_a], ClassOneHotValidationLabels[:, class_b]])
+
+    # select the correct neural network to run on
+    tf_input = tf_inputs[combo_index]
+    tf_expected = tf_expecteds[combo_index]
+    train_op = train_ops[combo_index]
+    loss_op = loss_ops[combo_index]
+    accuracy_op = accuracy_ops[combo_index]
+
+    # train the neural network on this data
+    step = 0
+    min_validation_loss = 5000
+    while True:
+        step += 1
+
+        # select data to train on for this mini-batch
+        batch_nums = np.random.choice(len(combo_training_indices), batch_size, p=combo_training_probabilities)
+
+        # run training
+        # warning: keep the indices as Data[combo[batch]], indexing the Data first via combo then via batch is 20x slower
+        in_dat = Data[combo_training_indices[batch_nums]]
+        in_lab = OneHotComboTrainingLabels[batch_nums]
+        sess.run(train_op, feed_dict={tf_input: in_dat, tf_expected: in_lab})
+
+        # check accuracy every N iterations
+        if step % display_step == 0 or step == 1:
+
+            # save the trainer
+            if checkpointFile is not None:
+                saver.save(sess, checkpointFile)
+
+            # training accuracy
+            training_loss, training_accuracy = sess.run([loss_op, accuracy_op], feed_dict={tf_input: Data[combo_training_indices], tf_expected: OneHotComboTrainingLabels})
+
+            # validation accuracy
+            validation_loss, validation_accuracy = sess.run([loss_op, accuracy_op], feed_dict={tf_input: Data[combo_validation_indices], tf_expected: OneHotComboValidationLabels})
+
+            # early stopping generalization loss per "Early Stopping - But When?"
+            #if validation_loss < min_validation_loss:
+            #    min_validation_loss = validation_loss
+            #generalization_loss = 100*(validation_loss/min_validation_loss - 1)
+            generalization_loss = -1
+
+            # print overall statistics
+            print("\tStep {: >5d}, Training Loss= {: >8.3f}, Validation Loss= {: >8.3f}, Generalization Loss = {: >8.3f}".format(step, training_loss, validation_loss, generalization_loss))
+            print("\t  Training Accuracy= {:.3f} Validation Accuracy= {:.3f}".format(training_accuracy, validation_accuracy))
+
+            # check if we should stop
+            # stop based on generalization loss increasing or a step limit
+            validation_accuracy_limit = 0.999
+            max_generalization_loss = 5.0 # picked as the highest GL they use in the paper
+            desired_max_step = 30000
+            step_limit = maxstep
+            if step_limit == -1:
+                step_limit = desired_max_step
+            if step >= step_limit or generalization_loss > max_generalization_loss or validation_accuracy > validation_accuracy_limit:
+                print("\tCompleted at step " + str(step))
+                break
 
 # function to run neural network training
 def run_nn (tf_inputs, tf_expecteds, train_ops, loss_ops, accuracy_ops, prediction_ops, generated_data):
@@ -73,10 +151,6 @@ def run_nn (tf_inputs, tf_expecteds, train_ops, loss_ops, accuracy_ops, predicti
 
     # record start time
     start_time = time.time()
-
-    # configurations
-    batch_size = 50
-    display_step = 100
 
     # create storage for per-house results
     house_count = int(max(Houses))+1
@@ -114,6 +188,9 @@ def run_nn (tf_inputs, tf_expecteds, train_ops, loss_ops, accuracy_ops, predicti
                     print("Restoring model from " + checkpointFile)
                     saver.restore(sess, checkpointFile)
 
+            # create pool of workers
+            pool = mp.Pool()
+
             # iterate through class combinations
             for combo_index, (class_a, class_b, combo_indices) in enumerate(class_list):
                 combo_training_indices = np.intersect1d(training_indices, combo_indices, assume_unique=True)
@@ -126,78 +203,17 @@ def run_nn (tf_inputs, tf_expecteds, train_ops, loss_ops, accuracy_ops, predicti
                     continue
                 print(" Running    {:s} [{:s} {:s}]".format("House " + str(house_index+1), labelstrs[class_a], labelstrs[class_b]))
 
-                # determine probabilities for each class
-                class_a_count = np.sum(Labels[combo_training_indices] == class_a)
-                class_a_each_prob = 0.5/class_a_count
-                class_b_count = len(combo_training_indices)-class_a_count
-                class_b_each_prob = 0.5/class_b_count
-                combo_training_probabilities = np.where((Labels[combo_training_indices] == class_a), class_a_each_prob, class_b_each_prob)
-
-                # convert labels into one-hot array
-                ClassOneHotTrainingLabels = np.eye(class_count)[Labels[combo_training_indices].astype(np.int64)]
-                OneHotComboTrainingLabels = np.transpose([ClassOneHotTrainingLabels[:, class_a], ClassOneHotTrainingLabels[:, class_b]])
-                ClassOneHotValidationLabels = np.eye(class_count)[Labels[combo_validation_indices].astype(np.int64)]
-                OneHotComboValidationLabels = np.transpose([ClassOneHotValidationLabels[:, class_a], ClassOneHotValidationLabels[:, class_b]])
-
-                # select the correct neural network to run on
-                tf_input = tf_inputs[combo_index]
-                tf_expected = tf_expecteds[combo_index]
-                train_op = train_ops[combo_index]
-                loss_op = loss_ops[combo_index]
-                accuracy_op = accuracy_ops[combo_index]
-
-                # train the neural network on this data
-                step = 0
-                min_validation_loss = 5000
-                while True:
-                    step += 1
-
-                    # select data to train on for this mini-batch
-                    batch_nums = np.random.choice(len(combo_training_indices), batch_size, p=combo_training_probabilities)
-
-                    # run training
-                    # warning: keep the indices as Data[combo[batch]], indexing the Data first via combo then via batch is 20x slower
-                    in_dat = Data[combo_training_indices[batch_nums]]
-                    in_lab = OneHotComboTrainingLabels[batch_nums]
-                    sess.run(train_op, feed_dict={tf_input: in_dat, tf_expected: in_lab})
-
-                    # check accuracy every N iterations
-                    if step % display_step == 0 or step == 1:
-
-                        # save the trainer
-                        if checkpointFile is not None:
-                            saver.save(sess, checkpointFile)
-
-                        # training accuracy
-                        training_loss, training_accuracy = sess.run([loss_op, accuracy_op], feed_dict={tf_input: Data[combo_training_indices], tf_expected: OneHotComboTrainingLabels})
-
-                        # validation accuracy
-                        validation_loss, validation_accuracy = sess.run([loss_op, accuracy_op], feed_dict={tf_input: Data[combo_validation_indices], tf_expected: OneHotComboValidationLabels})
-
-                        # early stopping generalization loss per "Early Stopping - But When?"
-                        #if validation_loss < min_validation_loss:
-                        #    min_validation_loss = validation_loss
-                        #generalization_loss = 100*(validation_loss/min_validation_loss - 1)
-                        generalization_loss = -1
-
-                        # print overall statistics
-                        print("\tStep {: >5d}, Training Loss= {: >8.3f}, Validation Loss= {: >8.3f}, Generalization Loss = {: >8.3f}".format(step, training_loss, validation_loss, generalization_loss))
-                        print("\t  Training Accuracy= {:.3f} Validation Accuracy= {:.3f}".format(training_accuracy, validation_accuracy))
-
-                        # check if we should stop
-                        # stop based on generalization loss increasing or a step limit
-                        validation_accuracy_limit = 0.999
-                        max_generalization_loss = 5.0 # picked as the highest GL they use in the paper
-                        desired_max_step = 30000
-                        step_limit = maxstep
-                        if step_limit == -1:
-                            step_limit = desired_max_step
-                        if step >= step_limit or generalization_loss > max_generalization_loss or validation_accuracy > validation_accuracy_limit:
-                            print("\tCompleted at step " + str(step))
-                            break
+                pool.apply_async(train_neural_network, args = ( \
+                train_neural_network(tf_inputs, tf_expecteds, train_ops, loss_ops, accuracy_ops, sess, \
+                        Data, Labels, class_count, \
+                        combo_index, class_a, class_b, combo_training_indices, combo_validation_indices) \)
 
                 # record results from the neural network
                 print(" Complete")
+
+            # wait until workers are done
+            pool.close()
+            pool.join()
 
             # calculate softmax predictions across all trained neural networks
             print(" Evaluating  {:s}".format("House " + str(house_index+1)))
