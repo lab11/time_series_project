@@ -11,7 +11,7 @@ import os
 import argparse
 
 # ensure that we always "randomly" run in a repeatable way
-RANDOM_SEED = 21
+RANDOM_SEED = 42
 tf.set_random_seed(RANDOM_SEED)
 np.random.seed(RANDOM_SEED)
 
@@ -195,7 +195,7 @@ def train_cycle_hierarchy_nn(graph, tf_input, tf_expected, optimizer, evaluation
         dropout = 0.5
         display_step = 100
 
-        #okay now that we have our data, we need to package it into score lists that can be fed into the LSTM
+        #okay now that we have our data, we need to package it into score lists that can be fed into the higher layer network
         unique_training_devices = np.unique(training_names)
         training_device_data = np.zeros((len(unique_training_devices), len(np.unique(training_labels))))
         unique_validation_devices = np.unique(validation_names)
@@ -288,9 +288,10 @@ def train_cycle_hierarchy_nn(graph, tf_input, tf_expected, optimizer, evaluation
                     sys.exit()
 
 
-def train_cycle_sequence_nn(graph, tf_input, tf_expected, optimizer, evaluation_args, generated_data, cycle_classifier):
+def train_cycle_sequence_nn(graph, tf_input, tf_expected, tf_sequences, optimizer, evaluation_args, generated_data, cycle_classifier):
     #A cycle-sequence NN should take sequences (list which may be of dynamic size)
     #of the softmax output of a NN that attempts to classify raw cycles
+    # Expected structure is simple neural net into LSTM
 
     #by looking at the order and the distribution of these raw cycles it should
     #output the final class probability
@@ -322,18 +323,26 @@ def train_cycle_sequence_nn(graph, tf_input, tf_expected, optimizer, evaluation_
         validation_device_data[np.where(unique_validation_devices == validation_names[i])[0][0]].append(validation_scores[i])
         validation_device_label[np.where(unique_validation_devices == validation_names[i])[0][0]] = validation_labels[i]
 
-    #convert the data into a numpy array
+    #convert the data into a numpy array, zero pad the data, and generate the list of true sequences
+    TrainingSequenceLengths = []
     max_len = 0
     for i in range(0, len(training_device_data)):
+        TrainingSequenceLengths.append(len(training_device_data[i]))
         if(len(training_device_data[i]) > max_len):
             max_len = len(training_device_data[i])
-
+    TrainingMaxLen = max_len
+    TrainingSequenceLengths = np.array(TrainingSequenceLengths, dtype=np.int32)
     TrainingData = np.zeros((len(training_device_data), max_len, len(np.unique(training_labels))))
+    
+    # Do the same for the validation data
+    ValidationSequenceLengths = []
     max_len = 0
     for i in range(0, len(validation_device_data)):
+        ValidationSequenceLengths.append(len(validation_device_data[i]))
         if(len(validation_device_data[i]) > max_len):
             max_len = len(validation_device_data[i])
-
+    ValidationMaxLen = max_len
+    ValidationSequenceLengths = np.array(ValidationSequenceLengths, dtype=np.int32)
     ValidationData = np.zeros((len(validation_device_data), max_len, len(np.unique(training_labels))))
 
     for i in range(0, len(training_device_data)):
@@ -380,7 +389,7 @@ def train_cycle_sequence_nn(graph, tf_input, tf_expected, optimizer, evaluation_
                 batch_nums = np.random.choice(TrainingData.shape[0], batch_size)
 
                 # run training
-                sess.run(optimizer, feed_dict = {tf_input: TrainingData[batch_nums], tf_expected: OneHotTrainingLabels[batch_nums]})
+                sess.run(optimizer, feed_dict = {tf_input: TrainingData[batch_nums], tf_expected: OneHotTrainingLabels[batch_nums], tf_sequences: TrainingSequenceLengths[batch_nums]})
 
                 # check accuracy every N iterations
                 if step % display_step == 0 or step == 1:
@@ -390,11 +399,13 @@ def train_cycle_sequence_nn(graph, tf_input, tf_expected, optimizer, evaluation_
                         saver.save(sess, LSTMcheckpointFile)
 
                     # training accuracy
-                    training_loss, training_accuracy, training_preds, training_pred_scores, training_correct_preds = sess.run(evaluation_args, feed_dict={tf_input: TrainingData, tf_expected: OneHotTrainingLabels})
+                    training_loss, training_accuracy, training_preds, training_pred_scores, training_correct_preds = sess.run(evaluation_args, feed_dict={tf_input: TrainingData, tf_expected: OneHotTrainingLabels, tf_sequences: TrainingSequenceLengths})
 
                     # validation accuracy
-                    validation_loss, validation_accuracy, validation_preds, validation_pred_scores, validation_correct_preds = sess.run(evaluation_args, feed_dict={tf_input: ValidationData, tf_expected: OneHotValidationLabels})
+                    validation_loss, validation_accuracy, validation_preds, validation_pred_scores, validation_correct_preds = sess.run(evaluation_args, feed_dict={tf_input: ValidationData, tf_expected: OneHotValidationLabels, tf_sequences: ValidationSequenceLengths})
 
+                    print(training_loss)
+                    print(validation_loss)
                     # print overal statistics
                     print("Step " + str(step) + \
                             ", Training Loss= " + "{: >8.3f}".format(training_loss) + \
@@ -418,7 +429,7 @@ def train_cycle_sequence_nn(graph, tf_input, tf_expected, optimizer, evaluation_
                     #    print("  {:s} |    {:.3f} ({:3d}) |      {:.3f} ({:3d})".format(labelstr, t_result, t_count, v_result, v_count))
                     #print("--------------------------------------------------------------")
                     print("  Total                    |    {:.3f}       |      {:.3f}".format(training_accuracy, validation_accuracy))
-                    print(confusion_matrix(ValidationLabels[validation_nums], validation_preds))
+                    print(confusion_matrix(ValidationLabels, validation_preds))
 
                 if maxstep != -1 and step >= maxstep:
                     print("Completed at step " + str(step))
