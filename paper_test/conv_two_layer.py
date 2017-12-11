@@ -103,13 +103,14 @@ def build_nn():
         # Evaluate
         predictions = tf.argmax(prediction, 1)
         pred_scores = tf.reduce_max(prediction, 1)
+        pred_scores_full = prediction
         correct_pred = tf.equal(predictions, tf.argmax(Y, 1)) # check the index with the largest value
         accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32)) # percentage of traces that were correct
 
-        return graph, X, Y, train_op, [loss_op, accuracy, predictions, pred_scores, correct_pred]
+        return graph, X, Y, train_op, [loss_op, accuracy, predictions, pred_scores, pred_scores_full, correct_pred]
 
 # train the neural network on test data
 graph, X, Y, optimizer, evaluation_args = build_nn()
-train_cycle_nn(graph, X, Y, optimizer, evaluation_args, gen_data())
+train_cycle_nn(graph, X, Y, optimizer, None, evaluation_args, gen_data())
 
 
