@@ -167,7 +167,7 @@ def group_weighted_accuracy_by_device(num_classes, num_devices, predictions, pre
     weighted_grouped_correct = filtered_weighted_votes == filtered_labels
     return np.mean(weighted_grouped_correct)
 
-def run_cycle_sequence_nn(tf_input, tf_expected, train_op, loss_op, accuracy, predictions, pred_scores, correct_pred, generated_data):
+def train_cycle_sequence_nn(tf_input, tf_expected, optimizer, evaluation_args, generated_data):
     #A cycle-sequence NN should take sequences (list which may be of dynamic size)
     #of the softmax output of a NN that attempts to classify raw cycles
 
@@ -176,7 +176,7 @@ def run_cycle_sequence_nn(tf_input, tf_expected, train_op, loss_op, accuracy, pr
     pass
 
 # function to run neural network training
-def train_cycle_nn(tf_input, tf_expected, train_op, loss_op, accuracy, predictions, pred_scores, correct_pred, generated_data):
+def train_cycle_nn(tf_input, tf_expected, optimizer, evaluation_args, generated_data):
     #a cycle NN takes in raw current/voltage waveforms for a cycle and attempts
     #to classify them
 
@@ -245,7 +245,7 @@ def train_cycle_nn(tf_input, tf_expected, train_op, loss_op, accuracy, predictio
             batch_nums = np.random.choice(TrainingData.shape[0], batch_size, p=TrainingData_probabilities)
 
             # run training
-            sess.run(train_op, feed_dict = {tf_input: TrainingData[batch_nums], tf_expected: OneHotTrainingLabels[batch_nums]})
+            sess.run(optimizer, feed_dict = {tf_input: TrainingData[batch_nums], tf_expected: OneHotTrainingLabels[batch_nums]})
 
             # check accuracy every N iterations
             if step % display_step == 0 or step == 1:
@@ -255,13 +255,13 @@ def train_cycle_nn(tf_input, tf_expected, train_op, loss_op, accuracy, predictio
                     saver.save(sess, checkpointFile)
 
                 # training accuracy
-                training_loss, training_accuracy, training_preds, training_pred_scores, training_correct_preds = sess.run([loss_op, accuracy, predictions,pred_scores, correct_pred], feed_dict={tf_input: TrainingData[training_nums], tf_expected: OneHotTrainingLabels[training_nums]})
+                training_loss, training_accuracy, training_preds, training_pred_scores, training_correct_preds = sess.run(evaluation_args, feed_dict={tf_input: TrainingData[training_nums], tf_expected: OneHotTrainingLabels[training_nums]})
 
                 training_grouped_accuracy = group_accuracy_by_device(len(labelstrs), num_names.astype(int), training_preds, TrainingNames, id_to_labels)
                 training_grouped_weighted_accuracy = group_weighted_accuracy_by_device(len(labelstrs), num_names.astype(int), training_preds, training_pred_scores, TrainingNames, id_to_labels)
 
                 # validation accuracy
-                validation_loss, validation_accuracy, validation_preds, validation_pred_scores, validation_correct_preds = sess.run([loss_op, accuracy, predictions, pred_scores, correct_pred], feed_dict={tf_input: ValidationData[validation_nums], tf_expected: OneHotValidationLabels[validation_nums]})
+                validation_loss, validation_accuracy, validation_preds, validation_pred_scores, validation_correct_preds = sess.run(evaluation_args, feed_dict={tf_input: ValidationData[validation_nums], tf_expected: OneHotValidationLabels[validation_nums]})
 
                 validation_grouped_accuracy = group_accuracy_by_device(len(labelstrs), num_names.astype(int), validation_preds, ValidationNames, id_to_labels)
                 validation_grouped_weighted_accuracy = group_weighted_accuracy_by_device(len(labelstrs), num_names.astype(int), validation_preds, validation_pred_scores, ValidationNames, id_to_labels)
@@ -297,7 +297,7 @@ def train_cycle_nn(tf_input, tf_expected, train_op, loss_op, accuracy, predictio
                 print("Completed at step " + str(step))
                 sys.exit()
 
-def run_cycle_nn(tf_input, tf_expected, train_op, loss_op, accuracy, predictions, pred_scores, correct_pred, generated_data):
+def run_cycle_nn(tf_input, tf_expected, evaluation_args, generated_data):
     #runs a forward pass on the cycle NN
 
     # create various test data
@@ -341,64 +341,19 @@ def run_cycle_nn(tf_input, tf_expected, train_op, loss_op, accuracy, predictions
             if(len(index[0]) > 0):
                 id_to_labels[i] = ValidationLabels[index[0][0]]
 
-
-        #save the trainer
-        if checkpointFile is not None:
-            saver.save(sess, checkpointFile)
-
         # training accuracy
-        training_loss, training_accuracy, training_preds, training_pred_scores, training_correct_preds = sess.run([loss_op, accuracy, predictions,pred_scores, correct_pred], feed_dict={tf_input: TrainingData[training_nums], tf_expected: OneHotTrainingLabels[training_nums]})
+        training_loss, training_accuracy, training_preds, training_pred_scores, training_correct_preds = sess.run(evaluation_args, feed_dict={tf_input: TrainingData[training_nums], tf_expected: OneHotTrainingLabels[training_nums]})
 
-        #calculate device grouped accuracy
-        one_hot_preds = np.transpose(np.eye(len(labelstrs))[training_preds])
-        one_hot_weighted_preds = np.dot(one_hot_preds,np.diag(training_pred_scores))
-        ids = np.reshape(TrainingNames,[-1])
-        one_hot_ids = np.eye(num_names.astype(int))[ids.astype(int)]
-        votes = np.matmul(one_hot_preds, one_hot_ids)
-        weighted_votes = np.matmul(one_hot_weighted_preds, one_hot_ids)
-        votes = np.transpose(votes)
-        weighted_votes = np.transpose(weighted_votes)
-        good_votes = np.amax(votes,1)
-        weighted_good_votes = np.amax(weighted_votes,1)
-        not_included = np.not_equal(good_votes, 0)
-        voted_labels = np.argmax(votes, 1)
-        weighted_voted_labels = np.argmax(weighted_votes, 1)
-        filtered_votes = voted_labels[not_included]
-        filtered_weighted_votes = weighted_voted_labels[not_included]
-        filtered_labels = id_to_labels[not_included]
-        grouped_correct = filtered_votes == filtered_labels
-        weighted_grouped_correct = filtered_weighted_votes == filtered_labels
-        training_grouped_accuracy = np.mean(grouped_correct)
-        training_grouped_weighted_accuracy = np.mean(weighted_grouped_correct)
+        training_grouped_accuracy = group_accuracy_by_device(len(labelstrs), num_names.astype(int), training_preds, TrainingNames, id_to_labels)
+        training_grouped_weighted_accuracy = group_weighted_accuracy_by_device(len(labelstrs), num_names.astype(int), training_preds, training_pred_scores, TrainingNames, id_to_labels)
 
         # validation accuracy
-        validation_loss, validation_accuracy, validation_preds, validation_pred_scores, validation_correct_preds = sess.run([loss_op, accuracy, predictions, pred_scores, correct_pred], feed_dict={tf_input: ValidationData[validation_nums], tf_expected: OneHotValidationLabels[validation_nums]})
+        validation_loss, validation_accuracy, validation_preds, validation_pred_scores, validation_correct_preds = sess.run(evaluation_args, feed_dict={tf_input: ValidationData[validation_nums], tf_expected: OneHotValidationLabels[validation_nums]})
 
-        #calculate device grouped accuracy
-        one_hot_preds = np.transpose(np.eye(len(labelstrs))[validation_preds])
-        one_hot_weighted_preds = np.dot(one_hot_preds,np.diag(validation_pred_scores))
-        ids = np.reshape(ValidationNames,[-1])
-        one_hot_ids = np.eye(num_names.astype(int))[ids.astype(int)]
-        votes = np.matmul(one_hot_preds, one_hot_ids)
-        weighted_votes = np.matmul(one_hot_weighted_preds, one_hot_ids)
-        votes = np.transpose(votes)
-        weighted_votes = np.transpose(weighted_votes)
-        good_votes = np.amax(votes,1)
-        weighted_good_votes = np.amax(weighted_votes,1)
-        not_included = np.not_equal(good_votes, 0)
-        voted_labels = np.argmax(votes, 1)
-        weighted_voted_labels = np.argmax(weighted_votes, 1)
-        filtered_votes = voted_labels[not_included]
-        filtered_weighted_votes = weighted_voted_labels[not_included]
-        filtered_labels = id_to_labels[not_included]
-        grouped_correct = filtered_votes == filtered_labels
-        weighted_grouped_correct = filtered_weighted_votes == filtered_labels
-        validation_grouped_accuracy = np.mean(grouped_correct)
-        validation_grouped_weighted_accuracy = np.mean(weighted_grouped_correct)
+        validation_grouped_accuracy = group_accuracy_by_device(len(labelstrs), num_names.astype(int), validation_preds, ValidationNames, id_to_labels)
+        validation_grouped_weighted_accuracy = group_weighted_accuracy_by_device(len(labelstrs), num_names.astype(int), validation_preds, validation_pred_scores, ValidationNames, id_to_labels)
 
-        # print overal statistics
-        print("Step " + str(step) + \
-                ", Training Loss= " + "{: >8.3f}".format(training_loss) + \
+        print("Training Loss= " + "{: >8.3f}".format(training_loss) + \
                 ", Validation Loss= " + "{: >8.3f}".format(validation_loss))
         print("--------------------------------------------------------------")
 
