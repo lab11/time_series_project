@@ -258,5 +258,5 @@ def run_nn (tf_inputs, tf_expecteds, train_ops, loss_ops, accuracy_ops, predicti
 
     # wow, we actually finished?
     print("Done with everything!!! yay")
-    print("That took " + str(start_time - time.time()) + " seconds")
+    print("That took " + str(time.time() - start_time) + " seconds")
 
