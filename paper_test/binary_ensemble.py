@@ -6,7 +6,7 @@ from sklearn import datasets
 import sys
 import os
 
-from plaid_data_setup import get_input_len, get_labels_len, run_nn, gen_data
+from plaid_data_setup import get_input_len, get_labels_len, train_cycle_nn, gen_data
 
 
 # Config:

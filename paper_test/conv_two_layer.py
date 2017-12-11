@@ -5,7 +5,7 @@ import numpy as np
 from sklearn import datasets
 import sys
 
-from plaid_data_setup import run_nn, generate_training_and_validation
+from plaid_data_setup import train_cycle_nn, generate_training_and_validation
 
 # function to create the training and validation datasets
 def gen_data():
