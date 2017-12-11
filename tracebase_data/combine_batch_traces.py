@@ -55,7 +55,7 @@ for i, trace in enumerate(trace_array):
     elif length < min_len:
         min_len = length
 
-data = np.zeros((len(fnames), max_len, 3), dtype=float)
+data = np.zeros((len(fnames), max_len, 3), dtype=int)
 for i, data_row in enumerate(data):
     length = len(trace_array[i])
     data_row[:length] = trace_array[i][:]
