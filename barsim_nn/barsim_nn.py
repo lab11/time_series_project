@@ -23,6 +23,7 @@ tf_expecteds = []
 train_ops = []
 loss_ops = []
 accuracy_ops = []
+prediction_ops = []
 
 # create neural network (mostly as per Barsim et. al)
 def neural_net():
@@ -56,8 +57,8 @@ def neural_net():
     train_op = optimizer.minimize(loss_op)
 
     # accuracy, unclear if this is equivalent to what they do
-    predictions = tf.nn.softmax(out_layer)
-    correct_predictions = tf.equal(tf.argmax(predictions, 1), tf.argmax(tf_expected, 1)) # check the index with the largest value
+    prediction_op = tf.nn.softmax(out_layer)
+    correct_predictions = tf.equal(tf.argmax(prediction_op, 1), tf.argmax(tf_expected, 1)) # check the index with the largest value
     accuracy_op = tf.reduce_mean(tf.cast(correct_predictions, tf.float32)) # percentage of traces that were correct
 
     # save hooks into neural network for training and evaluation
@@ -66,6 +67,7 @@ def neural_net():
     train_ops.append(train_op)
     loss_ops.append(loss_op)
     accuracy_ops.append(accuracy_op)
+    prediction_ops.append(prediction_op)
 
 # create all combinations of binary classifier neural networks
 print("Creating neural networks")
@@ -74,5 +76,5 @@ for index in range(n_networks):
 
 # train the neural network ensembles on test data
 print("Beginning training")
-run_nn(tf_inputs, tf_expecteds, train_ops, loss_ops, accuracy_ops, gen_data())
+run_nn(tf_inputs, tf_expecteds, train_ops, loss_ops, accuracy_ops, prediction_ops, gen_data())
 
