@@ -126,6 +126,10 @@ def gen_data():
 
 # Load data and generate train/validate
 TrainingData, ValidationData, TrainingLabels, ValidationLabels, TrainingLengths, ValidationLengths, TrainingNames, ValidationNames, labelstrs, num_names = gen_data()
+TrainingTimes = np.expand_dims(TrainingData[:,:,0], -1)
+ValidationTimes = np.expand_dims(ValidationData[:,:,0], -1)
+TrainingData = TrainingData[:,:,1:]
+ValidationData = ValidationData[:,:,1:]
 
 # hyperparameters and config
 n_hidden = 10
@@ -133,12 +137,12 @@ trace_len = len(TrainingData[0,:,0])
 n_classes = np.argmax(np.unique(labelstrs)) + 1
 learning_rate = 0.001
 drop_probability = 0
-batch_size = 25
+batch_size = 5
 
 x = tf.placeholder(tf.float32, (batch_size, trace_len, 2))
 t = tf.placeholder(tf.float32, (batch_size, trace_len, 1))
-y = tf.placeholder(tf.int32, (batch_size))
-seqlen = tf.placeholder(tf.int32, (batch_size))
+y = tf.placeholder(tf.float32, (batch_size))
+seqlen = tf.placeholder(tf.float32, (batch_size))
 
 # define network
 # LSTM layer + fully connected layer
@@ -151,7 +155,6 @@ with tf.variable_scope('softmax'):
     W = tf.get_variable('W', [n_hidden, n_classes])
     b = tf.get_variable('b', [n_classes], initializer = tf.constant_initializer(0.0))
 logits = tf.matmul(last_output, W) + b
-print(logits.shape)
 preds = tf.nn.softmax(logits)
 correct = tf.equal(tf.cast(tf.argmax(preds,1),tf.int32), y)
 accuracy = tf.reduce_mean(tf.cast(correct, tf.float32))
@@ -163,4 +166,38 @@ loss_op = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=l
 optimizer = tf.train.AdamOptimizer(learning_rate = learning_rate)
 train_op = optimizer.minimize(loss_op)
 
+init = tf.global_variables_initializer()
 
+with tf.Session() as sess:
+    sess.run(init)
+
+    step = 0
+    while True:
+        step += 1
+
+
+        # select data to train on and test on for this iteration
+        batch_nums = np.random.choice(TrainingData.shape[0], batch_size)
+
+        # run training
+        sess.run(train_op, feed_dict = {x: TrainingData[batch_nums], t: TrainingTimes[batch_nums], y: TrainingLabels[batch_nums]})
+
+        # check accuracy every N iterations
+        if step % display_step == 0 or step == 1:
+
+            # training accuracy
+            training_loss, training_accuracy, training_preds, training_pred_scores, training_correct_preds = sess.run(evaluation_args, feed_dict={x: TrainingData[training_nums], t: TrainingTimes[training_nums], y: TrainingLabels[training_nums]})
+
+            training_grouped_accuracy = group_accuracy_by_device(len(labelstrs), num_names.astype(int), training_preds, TrainingNames, id_to_labels)
+            training_grouped_weighted_accuracy = group_weighted_accuracy_by_device(len(labelstrs), num_names.astype(int), training_preds, training_pred_scores, TrainingNames, id_to_labels)
+
+            # validation accuracy
+            validation_loss, validation_accuracy, validation_preds, validation_pred_scores, validation_correct_preds = sess.run(evaluation_args, feed_dict={x: ValidationData[validation_nums], t: ValidationTimes[validation_nums], y: ValidationLabels[validation_nums]})
+
+            validation_grouped_accuracy = group_accuracy_by_device(len(labelstrs), num_names.astype(int), validation_preds, ValidationNames, id_to_labels)
+            validation_grouped_weighted_accuracy = group_weighted_accuracy_by_device(len(labelstrs), num_names.astype(int), validation_preds, validation_pred_scores, ValidationNames, id_to_labels)
+
+            # print overal statistics
+            print("Step " + str(step) + \
+                    ", Training Loss= " + "{: >8.3f}".format(training_loss) + \
+                    ", Validation Loss= " + "{: >8.3f}".format(validation_loss))
