@@ -204,9 +204,10 @@ def run_nn (tf_inputs, tf_expecteds, train_ops, loss_ops, accuracy_ops, predicti
                 print(" Running    {:s} [{:s} {:s}]".format("House " + str(house_index+1), labelstrs[class_a], labelstrs[class_b]))
 
                 pool.apply_async(train_neural_network, args = ( \
-                train_neural_network(tf_inputs, tf_expecteds, train_ops, loss_ops, accuracy_ops, sess, \
+                        tf_inputs, tf_expecteds, train_ops, loss_ops, accuracy_ops, sess, \
                         Data, Labels, class_count, \
-                        combo_index, class_a, class_b, combo_training_indices, combo_validation_indices) \)
+                        combo_index, class_a, class_b, combo_training_indices, combo_validation_indices) \
+                        )
 
                 # record results from the neural network
                 print(" Complete")
