@@ -60,6 +60,7 @@ for datasetname in sorted(metadata.keys()):
         # determine input and output files
         data_filename = 'numpy_arrays/' + data_id + '.npy'
         out_filename = 'raw_threshold_batch/' + 'numpy-power-event-' + device_class + '-' + device_state + '-' + device_full_name + '-file' + data_id + '.npy' #added event- to the regular filename
+        outplot_clipped = 'raw_threshold_batch_graphs/' + data_id + "-clipped.png"
         # read input file
         data = np.load(data_filename)
 
@@ -113,6 +114,8 @@ for datasetname in sorted(metadata.keys()):
                 no_classes[device_class] += 1
             else:
                 output_data = power_data[transition_point:end_point]
+                plt.plot(output_data)
+                plt.save(outplot_clipped)
                 np.save(out_filename, output_data)
 
         #print(data)
