@@ -746,6 +746,7 @@ def train_cycle_nn(graph, tf_input, tf_expected, optimizer, dropout_prob, evalua
 
             # keep track of accuracy values
             accuracy_records = []
+            max_validation_accuracy = 0
 
             # iterate forever training model
             step = 1
@@ -810,7 +811,10 @@ def train_cycle_nn(graph, tf_input, tf_expected, optimizer, dropout_prob, evalua
                     print("  Weighted Grouped Total   |    {:.3f}       |      {:.3f}".format(training_grouped_weighted_accuracy, validation_grouped_weighted_accuracy))
                     print(confusion_matrix(ValidationLabels[validation_nums], validation_preds))
 
+                    # record accuracies
                     accuracy_records.append((step, validation_grouped_weighted_accuracy))
+                    if validation_grouped_weighted_accuracy > max_validation_accuracy:
+                        max_validation_accuracy = validation_grouped_weighted_accuracy
 
                     #if (maxstep != -1 and step >= maxstep) or (earlyStopping and training_grouped_weighted_accuracy > 0.90 and ( \
                     #        (validation_grouped_weighted_accuracy > 0.95) or \
@@ -823,9 +827,11 @@ def train_cycle_nn(graph, tf_input, tf_expected, optimizer, dropout_prob, evalua
                         print("Completed at step " + str(step))
 
                         # save recorded accuracy data
-                        np.save('recorded_accuracies_' + str(uuid.uuid4()), accuracy_records)
+                        accuracies_filename = 'recorded_accuracies_' + str(uuid.uuid4())
+                        np.save(accuracies_filename, accuracy_records)
+                        print("Saved accuracy records to '" + accuracies_filename + ".npy'")
 
-                        return validation_grouped_weighted_accuracy
+                        return max_validation_accuracy
 
 def run_cycle_nn(graph, tf_input, tf_expected, evaluation_args, generated_data):
     #runs a forward pass on the cycle NN
