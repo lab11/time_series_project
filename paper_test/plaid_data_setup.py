@@ -287,6 +287,156 @@ def train_cycle_hierarchy_nn(graph, tf_input, tf_expected, optimizer, evaluation
                     print("Completed at step " + str(step))
                     sys.exit()
 
+def train_device_cycle_nn(graph, tf_input, tf_expected, tf_sequences, optimizer, dropout_prob, evaluation_args, generated_data):
+    #A cycle-sequence NN should take sequences (list which may be of dynamic size)
+    #of the softmax output of a NN that attempts to classify raw cycles
+    # Expected structure is simple neural net into LSTM
+
+    #by looking at the order and the distribution of these raw cycles it should
+    #output the final class probability
+    TrainingData, ValidationData, TrainingLabels, ValidationLabels, TrainingNames, ValidationNames, labelstrs, num_names = generated_data
+
+    #okay now that we have our data, we need to package it into score lists that can be fed into the LSTM
+    unique_training_devices = np.unique(TrainingNames)
+    training_device_data = [[] for i in range(len(unique_training_devices))]
+    unique_validation_devices = np.unique(ValidationNames)
+    validation_device_data = [[] for i in range(len(unique_validation_devices))]
+    training_device_label = np.zeros(len(unique_training_devices))
+    validation_device_label = np.zeros(len(unique_validation_devices))
+
+    for i in range(0, len(TrainingNames)):
+        training_device_data[np.where(unique_training_devices == TrainingNames[i])[0][0]].append(TrainingData[i])
+        training_device_label[np.where(unique_training_devices == TrainingNames[i])[0][0]] = TrainingLabels[i]
+
+    for i in range(0, len(ValidationNames)):
+        validation_device_data[np.where(unique_validation_devices == ValidationNames[i])[0][0]].append(ValidationData[i])
+        validation_device_label[np.where(unique_validation_devices == ValidationNames[i])[0][0]] = ValidationLabels[i]
+
+    #convert the data into a numpy array, zero pad the data, and generate the list of true sequences
+    TrainingSequenceLengths = []
+    max_len = 0
+    for i in range(0, len(training_device_data)):
+        TrainingSequenceLengths.append(len(training_device_data[i]))
+        if(len(training_device_data[i]) > max_len):
+            max_len = len(training_device_data[i])
+    TrainingMaxLen = max_len
+    TrainingSequenceLengths = np.array(TrainingSequenceLengths, dtype=np.int32)
+    TrainingData = np.zeros((len(training_device_data), max_len, len(TrainingData[0])))
+
+    # Do the same for the validation data
+    ValidationSequenceLengths = []
+    max_len = 0
+    for i in range(0, len(validation_device_data)):
+        ValidationSequenceLengths.append(len(validation_device_data[i]))
+        if(len(validation_device_data[i]) > max_len):
+            max_len = len(validation_device_data[i])
+    ValidationMaxLen = max_len
+    ValidationSequenceLengths = np.array(ValidationSequenceLengths, dtype=np.int32)
+    ValidationData = np.zeros((len(validation_device_data), max_len, len(ValidationData[0])))
+
+    for i in range(0, len(training_device_data)):
+        for j in range(0, len(training_device_data[i])):
+            TrainingData[i][j] = training_device_data[i][j]
+
+    for i in range(0, len(validation_device_data)):
+        for j in range(0, len(validation_device_data[i])):
+            ValidationData[i][j] = validation_device_data[i][j]
+
+    TrainingLabels = np.array(training_device_label)
+    ValidationLabels = np.array(validation_device_label)
+    OneHotTrainingLabels = np.eye(len(np.unique(TrainingLabels)))[TrainingLabels.astype(int)]
+    OneHotValidationLabels = np.eye(len(np.unique(ValidationLabels)))[ValidationLabels.astype(int)]
+
+    # determine probabilities of selection for each trace
+    #  - the probability of selecting each class should be equal
+    #  - the probability of selecting any trace within a single class should be equal
+    n_classes = len(np.unique(TrainingLabels))
+    class_prob = 1.0/n_classes
+    device_prob = np.zeros(n_classes)
+    TrainingData_probabilities = np.zeros(len(TrainingLabels))
+    for label in TrainingLabels:
+        device_prob[int(label)] += 1.0
+    for index, count in enumerate(device_prob):
+        device_prob[index] = class_prob/count
+    for index in range(len(TrainingData_probabilities)):
+        TrainingData_probabilities[index] = device_prob[int(TrainingLabels[index])]
+
+    with graph.as_default():
+
+        batch_size = 25
+        dropout = 0.5
+        display_step = 100
+
+        # initialize tensorflow variables
+        init = tf.global_variables_initializer()
+
+        # create a saver object
+        saver = tf.train.Saver()
+
+        # begin and initialize tensorflow session
+        with tf.Session(graph=graph) as sess:
+            sess.run(init)
+
+            if LSTMcheckpointFile is not None:
+                if os.path.isfile(LSTMcheckpointFile + ".meta"):
+                    print("Restoring model from " + LSTMcheckpointFile)
+                    saver.restore(sess, LSTMcheckpointFile)
+
+
+            # iterate forever training model
+            step = 1
+            while True:
+                step += 1
+
+                # select data to train on and test on for this iteration
+                batch_nums = np.random.choice(TrainingData.shape[0], batch_size, p=TrainingData_probabilities)
+
+                # run training
+                sess.run(optimizer, feed_dict = {tf_input: TrainingData[batch_nums], tf_expected: OneHotTrainingLabels[batch_nums], tf_sequences: TrainingSequenceLengths[batch_nums], dropout_prob: dropout})
+
+                # check accuracy every N iterations
+                if step % display_step == 0 or step == 1:
+
+                    #save the trainer
+                    if LSTMcheckpointFile is not None:
+                        saver.save(sess, LSTMcheckpointFile)
+
+                    # training accuracy
+                    training_loss, training_accuracy, training_preds, training_pred_scores, training_correct_preds = sess.run(evaluation_args, feed_dict={tf_input: TrainingData, tf_expected: OneHotTrainingLabels, tf_sequences: TrainingSequenceLengths})
+
+                    # validation accuracy
+                    validation_loss, validation_accuracy, validation_preds, validation_pred_scores, validation_correct_preds = sess.run(evaluation_args, feed_dict={tf_input: ValidationData, tf_expected: OneHotValidationLabels, tf_sequences: ValidationSequenceLengths})
+
+                    # print overal statistics
+                    print("Step " + str(step) + \
+                            ", Training Loss= " + "{: >8.3f}".format(training_loss) + \
+                            ", Validation Loss= " + "{: >8.3f}".format(validation_loss))
+                    print("--------------------------------------------------------------")
+
+                    # determine per-class results and print
+                    print("  Class                    | Training (cnt) | Validation (cnt)")
+                    print("--------------------------------------------------------------")
+                    #for label in range(len(labelstrs)):
+                    #    label_indices = np.flatnonzero((TrainingLabels == label))
+                    #    t_result = np.mean(training_correct_preds[label_indices])
+                    #    t_count = len(label_indices)
+
+                    #    label_indices = np.flatnonzero((ValidationLabels == label))
+                    #    v_result = np.mean(validation_correct_preds[label_indices])
+                    #    v_count = len(label_indices)
+
+                    #    labelstr = labelstrs[label]
+
+                    #    print("  {:s} |    {:.3f} ({:3d}) |      {:.3f} ({:3d})".format(labelstr, t_result, t_count, v_result, v_count))
+                    #print("--------------------------------------------------------------")
+                    print("  Total                    |    {:.3f}       |      {:.3f}".format(training_accuracy, validation_accuracy))
+                    print(confusion_matrix(ValidationLabels, validation_preds))
+
+                if maxstep != -1 and step >= maxstep:
+                    print("Completed at step " + str(step))
+                    sys.exit()
+
+
 
 def train_cycle_sequence_nn(graph, tf_input, tf_expected, tf_sequences, optimizer, evaluation_args, generated_data, cycle_classifier):
     #A cycle-sequence NN should take sequences (list which may be of dynamic size)
