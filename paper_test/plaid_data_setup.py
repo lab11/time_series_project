@@ -19,10 +19,12 @@ parser = argparse.ArgumentParser(description='Run neural network')
 parser.add_argument('-s', dest = "checkpointFile", type=str)
 parser.add_argument('-l', dest = "LSTMcheckpointFile", type=str)
 parser.add_argument('-n', dest = "maxstep", type=int, default=-1)
+parser.add_argument('-e', dest = 'earlyStopping', action='store_true', default=False)
 args = parser.parse_args()
 checkpointFile = args.checkpointFile
 LSTMcheckpointFile = args.LSTMcheckpointFile
 maxstep = args.maxstep
+earlyStopping = args.earlyStopping
 
 # function to create the training and validation datasets
 def gen_data():
@@ -775,7 +777,7 @@ def train_cycle_nn(graph, tf_input, tf_expected, optimizer, dropout_prob, evalua
                     validation_grouped_accuracy = group_accuracy_by_device(len(labelstrs), num_names.astype(int), validation_preds, ValidationNames, id_to_labels)
                     validation_grouped_weighted_accuracy = group_weighted_accuracy_by_device(len(labelstrs), num_names.astype(int), validation_preds, validation_pred_scores, ValidationNames, id_to_labels)
 
-                    # print overal statistics
+                    # print overall statistics
                     print("Step " + str(step) + \
                             ", Training Loss= " + "{: >8.3f}".format(training_loss) + \
                             ", Validation Loss= " + "{: >8.3f}".format(validation_loss))
@@ -802,9 +804,15 @@ def train_cycle_nn(graph, tf_input, tf_expected, optimizer, dropout_prob, evalua
                     print("  Weighted Grouped Total   |    {:.3f}       |      {:.3f}".format(training_grouped_weighted_accuracy, validation_grouped_weighted_accuracy))
                     print(confusion_matrix(ValidationLabels[validation_nums], validation_preds))
 
-                if maxstep != -1 and step >= maxstep:
-                    print("Completed at step " + str(step))
-                    return validation_grouped_weighted_accuracy
+                    if (maxstep != -1 and step >= maxstep) or (earlyStopping and training_grouped_weighted_accuracy > 0.90 and ( \
+                            (validation_grouped_weighted_accuracy > 0.95) or \
+                            (step >= 100000 and validation_grouped_weighted_accuracy > 0.90) or \
+                            (step >= 150000 and validation_grouped_weighted_accuracy > 0.85) or \
+                            (step >= 200000 and validation_grouped_weighted_accuracy > 0.80) or \
+                            (step >= 300000) \
+                            )):
+                        print("Completed at step " + str(step))
+                        return validation_grouped_weighted_accuracy
 
 def run_cycle_nn(graph, tf_input, tf_expected, evaluation_args, generated_data):
     #runs a forward pass on the cycle NN
