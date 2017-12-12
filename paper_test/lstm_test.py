@@ -4,69 +4,90 @@ import tensorflow as tf
 import numpy as np
 import sys
 
-from plaid_data_setup import get_input_len, get_labels_len, train_cycle_nn, gen_data, train_cycle_sequence_nn, train_cycle_hierarchy_nn
+from plaid_data_setup import get_input_len, get_labels_len, train_cycle_nn, gen_data, train_cycle_sequence_nn, train_cycle_hierarchy_nn, gen_cross_validation_data, select_cross_validation_set,select_cross_validation_sets
 
-# Parametsr for synthetic data
-batch_size = 10
-trace_prediciton_length = 7
-padded_trace_prediction_length = trace_prediciton_length + 10 # In my head this should be the timestamp?
-num_labels = 11
+def build_nn():
+    # Parametsr for synthetic data
+    batch_size = 10
+    trace_prediciton_length = 7
+    padded_trace_prediction_length = trace_prediciton_length + 10 # In my head this should be the timestamp?
+    num_labels = 11
 
-#LSTM parameters.
-num_units = 22
-learning_rate = .005
+    #LSTM parameters.
+    num_units = 22
+    learning_rate = .005
 
-# Artificial data I created just to do some basic tests
-synthetic_data = np.random.rand(batch_size, trace_prediciton_length, num_labels)
-padding_shape = ((0,0), (0,10), (0,0)) # Only pad along with trace_prediction_length axis
-synthetic_data = np.pad(synthetic_data, padding_shape, "constant", constant_values=(0,0)) # Zero pad our synethtic data laong withe trace_predition_length axis
-synthetic_correct = np.zeros(shape=(batch_size, num_labels), dtype=int)
+    # Artificial data I created just to do some basic tests
+    synthetic_data = np.random.rand(batch_size, trace_prediciton_length, num_labels)
+    padding_shape = ((0,0), (0,10), (0,0)) # Only pad along with trace_prediction_length axis
+    synthetic_data = np.pad(synthetic_data, padding_shape, "constant", constant_values=(0,0)) # Zero pad our synethtic data laong withe trace_predition_length axis
+    synthetic_correct = np.zeros(shape=(batch_size, num_labels), dtype=int)
 
-for x in synthetic_correct:
-	x[5] = 1
+    for x in synthetic_correct:
+    	x[5] = 1
 
-synth_sequence_lengths = []
-for i in range(len(synthetic_data)):
-	synth_sequence_lengths.append(int(np.argmin(synthetic_data[i]) / num_labels))
+    synth_sequence_lengths = []
+    for i in range(len(synthetic_data)):
+    	synth_sequence_lengths.append(int(np.argmin(synthetic_data[i]) / num_labels))
 
 
 
-inputs = tf.placeholder(tf.float32, (None, None, num_labels))
-correct_labels = tf.placeholder(tf.float32, (None, num_labels))
-seqlen = tf.placeholder(tf.int32, None) # The true sequence lengths of the inputs. THe actual inputs should be zero-padded such that they are all the same length.
+    inputs = tf.placeholder(tf.float32, (None, None, num_labels))
+    correct_labels = tf.placeholder(tf.float32, (None, num_labels))
+    seqlen = tf.placeholder(tf.int32, None) # The true sequence lengths of the inputs. THe actual inputs should be zero-padded such that they are all the same length.
 
-cell = tf.contrib.rnn.BasicLSTMCell(num_units) # Single layer LSTM
+    cell = tf.contrib.rnn.BasicLSTMCell(num_units) # Single layer LSTM
 
-outputs, state = tf.nn.dynamic_rnn(cell=cell,
-								 inputs=inputs,
-								 sequence_length=seqlen, # Tensorflow uses this to automatically mask out the zero padding
-								 dtype=tf.float32)
+    outputs, state = tf.nn.dynamic_rnn(cell=cell,
+    								 inputs=inputs,
+    								 sequence_length=seqlen, # Tensorflow uses this to automatically mask out the zero padding
+    								 dtype=tf.float32)
 
-last_output = tf.gather_nd(outputs, tf.stack([tf.range(tf.shape(outputs)[0]), seqlen-1], axis=1)) # This gets the last output before zero padding
+    last_output = tf.gather_nd(outputs, tf.stack([tf.range(tf.shape(outputs)[0]), seqlen-1], axis=1)) # This gets the last output before zero padding
 
-# This variable_scope stuff seems unneccessary here, but seems like a good habit for tensorflow. Basically helps you manage variables when there are multiple neural networks
-with tf.variable_scope('softmax'):
-	W = tf.get_variable('W', [num_units, num_labels])
-	b = tf.get_variable('b', [num_labels], initializer = tf.constant_initializer(0.0))
+    # This variable_scope stuff seems unneccessary here, but seems like a good habit for tensorflow. Basically helps you manage variables when there are multiple neural networks
+    with tf.variable_scope('softmax'):
+    	W = tf.get_variable('W', [num_units, num_labels])
+    	b = tf.get_variable('b', [num_labels], initializer = tf.constant_initializer(0.0))
 
-logits = tf.matmul(last_output, W) + b
-softmax = tf.nn.softmax(logits)
+    logits = tf.matmul(last_output, W) + b
+    softmax = tf.nn.softmax(logits)
 
-# Copied this shit from our other networks
-cost = tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=correct_labels)
-loss = tf.reduce_mean(cost)
-optimizer = tf.train.AdamOptimizer(learning_rate = learning_rate)
-train_op = optimizer.minimize(loss)
+    # Copied this shit from our other networks
+    cost = tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=correct_labels)
+    loss = tf.reduce_mean(cost)
+    optimizer = tf.train.AdamOptimizer(learning_rate = learning_rate)
+    train_op = optimizer.minimize(loss)
 
-# Eval Shit
-predictions = tf.argmax(softmax, 1)
-pred_scores = tf.reduce_max(softmax,1)
-correct_pred = tf.equal(predictions, tf.argmax(correct_labels, 1)) # check the index with the largest value
-accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32)) # percentage of traces that were correct
+    # Eval Shit
+    predictions = tf.argmax(softmax, 1)
+    pred_scores = tf.reduce_max(softmax,1)
+    correct_pred = tf.equal(predictions, tf.argmax(correct_labels, 1)) # check the index with the largest value
+    accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32)) # percentage of traces that were correct
+    lstm_graph = tf.get_default_graph()
+    evaluation_args = [loss, accuracy, predictions, pred_scores, correct_pred]
 
-lstm_graph = tf.get_default_graph()
-evaluation_args = [loss, accuracy, predictions, pred_scores, correct_pred]
-train_cycle_sequence_nn(lstm_graph, inputs, correct_labels, seqlen, train_op, evaluation_args, gen_data(), 'dense_single_layer')
+    return lstm_graph, inputs, correct_labels, seqlen, train_op, evaluation_args
+
+if __name__ == "__main__":
+    # create dataset
+    cross_validation_set_count = 5
+    Data, Labels, Names, labelstrs, num_names, cross_validation_indices = gen_cross_validation_data(cross_validation_set_count)
+
+    # select cross validation set
+    training_indices, validation_indices = select_cross_validation_set(cross_validation_indices, [1, 2])
+    training_data = Data[validation_indices[0]]
+    training_labels = Labels[validation_indices[0]]
+    training_names = Names[validation_indices[0]]
+    validation_data = Data[validation_indices[1]]
+    validation_labels = Labels[validation_indices[1]]
+    validation_names = Names[validation_indices[1]]
+    data_input = (training_data, validation_data, training_labels, validation_labels, training_names, validation_names, labelstrs, num_names)
+
+    # train the neural network on test data
+    graph, X, Y, seqlen, optimizer, evaluation_args = build_nn()
+    train_cycle_sequence_nn(graph, X, Y, seqlen, optimizer, evaluation_args, data_input, 'dense_single_layer')
+
 
 
 """
