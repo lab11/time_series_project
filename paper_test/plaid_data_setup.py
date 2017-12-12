@@ -29,6 +29,39 @@ maxstep = args.maxstep
 earlyStopping = args.earlyStopping
 
 # function to create the training and validation datasets
+def gen_all_data():
+    # load and shuffle data
+    data = np.load("../plaid_data/traces_all_bundle.npy")
+    labelnames = np.load("../plaid_data/traces_all_nameclass.npy")
+    Data = data
+    Labels = labelnames[1]
+    Names = labelnames[0]
+    num_names = np.max(Names) + 1
+
+    # normalize all waveform magnitude to the maximum for that type
+    data_len = len(Data[0])
+    Data[:,:,:,0] /= np.amax(np.absolute(Data[:,:,:,0])) # current
+    Data[:,:,:,1] /= np.amax(np.absolute(Data[:,:,:,1])) # current
+
+    # get label string names and pad spaces to make them equal length
+    labelstrs = np.load("../plaid_data/traces_class_map.npy")
+    max_str_len = max([len(s) for s in labelstrs])
+    for index, label in enumerate(labelstrs):
+        labelstrs[index] = label + ' '*(max_str_len - len(label))
+
+    # quick idiot test
+    if max(Labels)+1 != len(labelstrs):
+        print("Error: Number of classes doesn't match labels input")
+        sys.exit()
+
+    # generate training and validation datasets (already shuffled)
+    TrainingData, TrainingLabels, TrainingNames, ValidationData, ValidationLabels, ValidationNames = generate_training_and_validation(Data, Labels, Names, 0.20)
+
+    return (TrainingData, ValidationData, TrainingLabels, ValidationLabels, TrainingNames, ValidationNames, labelstrs, num_names)
+
+
+
+# function to create the training and validation datasets
 def gen_data():
     # load and shuffle data
     data = np.load("../plaid_data/traces_bundle.npy")
