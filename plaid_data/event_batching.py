@@ -68,9 +68,7 @@ for datasetname in sorted(metadata.keys()):
         # number of half cycles on either side of the transitions
         num_cycle = 5
 
-
-        # Gather the data into half cycles
-        last_sign = True
+        # Gather the data into cycles
         cycles = []
         cur_cycle = []
         voltage = data[:,1]
@@ -87,25 +85,49 @@ for datasetname in sorted(metadata.keys()):
 #        exit()
         '''
          
+        last_sign = True
         first = True
+        pos_cnt = 0
+        neg_cnt = 0
         for row in data:
             cur_cycle.append(row)
             #determine the sign
             if row[1] >= 0:
                 cur_sign = pos
+                pos_cnt = pos_cnt + 1
             else:
                 cur_sign = neg
+                neg_cnt = neg_cnt + 1
+            if not cur_sign == last_sign:
+                if cur_sign == pos: #starting pos
+                    if len(cur_cycle) > 499:
+                        cycles.append(cur_cycle)
+                        cur_cycle = []
+                    else:
+                        #plt.plot(cur_cycle)
+                        #plt.show()
+                        cur_cycle = []
+                last_sign = cur_sign
+            '''
             if not cur_sign == last_sign: #if crossed zero
                 if cur_sign == pos:
                     if first:
                         first = False
                         cur_cycle = []
                     if not len(cur_cycle) == 0:
+                        if len(cur_cycle) < 250:
+                            print(cur_sign)
+                            print len(cur_cycle)
+                            exit()
                         #print(len(cur_cycle))
                         cycles.append(cur_cycle)
                         cur_cycle = []
+                else:
+                    if first:
+                        cur_cycle = []
+                  
                 last_sign = cur_sign 
-        
+            '''
         trigger = 2
 
         #extract the data
@@ -125,8 +147,9 @@ for datasetname in sorted(metadata.keys()):
                 if not cur_pwr_state == last_pwr_state: #state change
                     if last_pwr_state == off: #turning on
                         on_idxs.append(idx)
-                    else: #turning off
-                        off_idxs.append(idx)
+
+                    #else: #turning off
+                    #    off_idxs.append(idx)
                     last_pwr_state = cur_pwr_state
         if len(off_idxs) == 0 and len(on_idxs) == 0: #no state changes found
             print("throwing away due to never having been off: " + data_filename)
@@ -181,10 +204,11 @@ for datasetname in sorted(metadata.keys()):
             for cycle in cycle_group:
                 for sample in cycle:
                     output_data.append(sample)
-        print(len(output_data))
-        np.save(out_filename, output_data)
-        '''
+        #plt.plot(output_data)
+        #plt.show()
+        np.save(out_filename, np.reshape(output_data[0:5000],[-1,500,2]))
         
+        '''
         #select last N full cycles from data
         n_cycles = 1
         frequency = 30000
@@ -214,6 +238,5 @@ for datasetname in sorted(metadata.keys()):
         two_periods = np.hstack((two_periods,event_col))
         output_data = two_periods
         print(output_data.shape)
-        '''
         #np.save(out_filename, output_data)
-        
+        '''
