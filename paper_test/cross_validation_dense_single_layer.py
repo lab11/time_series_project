@@ -64,7 +64,7 @@ def build_nn():
 if __name__ == "__main__":
 
     # create dataset
-    cross_validation_set_count = 5
+    cross_validation_set_count = 10
     Data, Labels, Names, labelstrs, num_names, cross_validation_indices = gen_cross_validation_data(cross_validation_set_count)
 
     # run cross validation
