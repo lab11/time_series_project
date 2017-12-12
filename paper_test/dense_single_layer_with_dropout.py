@@ -278,41 +278,55 @@ if __name__ == "__main__":
         saver = tf.train.Saver()
         coord = tf.train.Coordinator()
 
-        #print("Loading pre-trained, uncompressed model")
-        #saver.restore(sess, os.path.join('checkpoint', 'test.meta'))
-        #print("Loaded\n")
+        CACHE_PATH = 'DeepIoT-cache'
+        if os.path.exists(CACHE_PATH):
+            print("Loading pre-trained, uncompressed model")
+            saver.restore(sess, os.path.join(CACHE_PATH, 'model'))
+            print("Loaded\n")
 
-        print('='*80)
-        print("Training initial model (no dropout)")
-        for iteration in range(50000):
-            # select data to train on and test on for this iteration
-            batch_nums = np.random.choice(TrainingData.shape[0], BATCH_SIZE)
+        else:
+            print('='*80)
+            print("Training initial model (no dropout)")
+            for iteration in range(50000):
+                # select data to train on and test on for this iteration
+                batch_nums = np.random.choice(TrainingData.shape[0], BATCH_SIZE)
 
-            # Run training
-            optimizer, loss, labels, prediction, accuracy = sess.run(training_NN,
-                    feed_dict = {
-                        batch_training_features: TrainingData[batch_nums],
-                        batch_training_labels: OneHotTrainingLabels[batch_nums],
-                        }
-                    )
-
-            if (iteration < 5) or (iteration % 999) == 0:
-                # select data to evaluate for this iteration
-                batch_nums_eval = np.random.choice(ValidationData.shape[0], BATCH_SIZE)
-
-                # Run evaluation
-                loss_eval, labels_eval, prediction_eval = sess.run(eval_NN,
+                # Run training
+                optimizer, loss, labels, prediction, accuracy = sess.run(training_NN,
                         feed_dict = {
-                            batch_eval_features: ValidationData[batch_nums_eval],
-                            batch_eval_labels: OneHotValidationLabels[batch_nums_eval],
+                            batch_training_features: TrainingData[batch_nums],
+                            batch_training_labels: OneHotTrainingLabels[batch_nums],
                             }
                         )
 
-                print("iteration {:06}".format(iteration), end='')
-                print(" | training loss {} accuracy {}".format(loss, accuracy), end='')
-                print(" | evalaution loss {}".format(loss_eval))
-        print("Finished initial training.")
-        print('='*80)
+                if (iteration < 5) or (iteration % 999) == 0:
+                    # select data to evaluate for this iteration
+                    batch_nums_eval = np.random.choice(ValidationData.shape[0], BATCH_SIZE)
+
+                    # Run evaluation
+                    loss_eval, labels_eval, prediction_eval = sess.run(eval_NN,
+                            feed_dict = {
+                                batch_eval_features: ValidationData[batch_nums_eval],
+                                batch_eval_labels: OneHotValidationLabels[batch_nums_eval],
+                                }
+                            )
+
+                    print("iteration {:06}".format(iteration), end='')
+                    print(" | training loss {} accuracy {}".format(loss, accuracy), end='')
+                    print(" | evalaution loss {}".format(loss_eval))
+            print("Finished initial training.")
+            print('='*80)
+
+            saver.save(sess, os.path.join(CACHE_PATH, 'model'))
 
         print("Running loaded model on evaluation data once first:")
-        eval_accuracy = []
+        # Run evaluation
+        batch_nums_eval = np.random.choice(ValidationData.shape[0], BATCH_SIZE)
+        loss_eval, labels_eval, prediction_eval = sess.run(eval_NN,
+                feed_dict = {
+                    batch_eval_features: ValidationData[batch_nums_eval],
+                    batch_eval_labels: OneHotValidationLabels[batch_nums_eval],
+                    }
+                )
+
+        print(" | evalaution loss {}".format(loss_eval))
