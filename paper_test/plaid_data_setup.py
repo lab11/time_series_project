@@ -760,7 +760,7 @@ def train_cycle_nn(graph, tf_input, tf_expected, optimizer, dropout_prob, evalua
                 batch_nums = np.random.choice(TrainingData.shape[0], batch_size, p=TrainingData_probabilities)
 
                 # run training
-                if(type(dropout_prob) != None):
+                if(dropout_prob is not None):
                     sess.run(optimizer, feed_dict = {tf_input: TrainingData[batch_nums], tf_expected: OneHotTrainingLabels[batch_nums], dropout_prob: dropout})
                 else:
                     sess.run(optimizer, feed_dict = {tf_input: TrainingData[batch_nums], tf_expected: OneHotTrainingLabels[batch_nums]})
