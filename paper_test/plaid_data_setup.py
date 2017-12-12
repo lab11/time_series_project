@@ -728,10 +728,13 @@ def train_cycle_nn(graph, tf_input, tf_expected, optimizer, dropout_prob, evalua
         with tf.Session(graph=graph) as sess:
             sess.run(init)
 
+            checkpoint_string_name = None
             if checkpointFile is not None:
                 if os.path.isfile(checkpointFile + ".meta"):
                     print("Restoring model from " + checkpointFile)
                     saver.restore(sess, checkpointFile)
+
+                checkpoint_string_name = checkpointFile + str(uuid.uuid4())
 
             id_to_labels = np.zeros(num_names.astype(int))
             for i in range(0, num_names.astype(int)):
@@ -746,7 +749,6 @@ def train_cycle_nn(graph, tf_input, tf_expected, optimizer, dropout_prob, evalua
 
             # keep track of accuracy values
             accuracy_records = []
-            max_validation_accuracy = 0
 
             # iterate forever training model
             step = 1
@@ -768,8 +770,8 @@ def train_cycle_nn(graph, tf_input, tf_expected, optimizer, dropout_prob, evalua
                 if step % display_step == 0 or step == 1:
 
                     #save the trainer
-                    if checkpointFile is not None:
-                        saver.save(sess, checkpointFile)
+                    if checkpoint_string_name is not None:
+                        saver.save(sess, checkpoint_string_name)
 
                     # training accuracy
                     training_loss, training_accuracy, training_preds, training_pred_scores, training_pred_scores_full, training_correct_preds = sess.run(evaluation_args, feed_dict={tf_input: TrainingData[training_nums], tf_expected: OneHotTrainingLabels[training_nums]})
@@ -812,17 +814,8 @@ def train_cycle_nn(graph, tf_input, tf_expected, optimizer, dropout_prob, evalua
                     print(confusion_matrix(ValidationLabels[validation_nums], validation_preds))
 
                     # record accuracies
-                    accuracy_records.append((step, validation_grouped_weighted_accuracy))
-                    if validation_grouped_weighted_accuracy > max_validation_accuracy:
-                        max_validation_accuracy = validation_grouped_weighted_accuracy
+                    accuracy_records.append((step, training_grouped_weighted_accuracy, validation_grouped_weighted_accuracy))
 
-                    #if (maxstep != -1 and step >= maxstep) or (earlyStopping and training_grouped_weighted_accuracy > 0.90 and ( \
-                    #        (validation_grouped_weighted_accuracy > 0.95) or \
-                    #        (step >= 100000 and validation_grouped_weighted_accuracy > 0.90) or \
-                    #        (step >= 150000 and validation_grouped_weighted_accuracy > 0.85) or \
-                    #        (step >= 200000 and validation_grouped_weighted_accuracy > 0.80) or \
-                    #        (step >= 300000) \
-                    #        )):
                     if (maxstep != -1 and step >= maxstep):
                         print("Completed at step " + str(step))
 
@@ -830,8 +823,9 @@ def train_cycle_nn(graph, tf_input, tf_expected, optimizer, dropout_prob, evalua
                         accuracies_filename = 'recorded_accuracies_' + str(uuid.uuid4())
                         np.save(accuracies_filename, accuracy_records)
                         print("Saved accuracy records to '" + accuracies_filename + ".npy'")
+                        print("NN saved as " + checkpoint_string_name)
 
-                        return max_validation_accuracy
+                        return validation_grouped_weighted_accuracy
 
 def run_cycle_nn(graph, tf_input, tf_expected, evaluation_args, generated_data):
     #runs a forward pass on the cycle NN
