@@ -66,24 +66,34 @@ for datasetname in sorted(metadata.keys()):
         on = True
         
         # number of half cycles on either side of the transitions
-        num_half_cycle = 10
+        num_cycle = 5
+
 
         # Gather the data into half cycles
         last_sign = True
-        half_cycles = [] #holds all half cycles
-        cur_half_cycle = [] #holds all samples in 1 half cycle
+        cycles = []
+        cur_cycle = []
+        first = True
         for row in data:
-            cur_half_cycle.append(list(row))
+            cur_cycle.append(list(row))
             #determine the sign
             if row[1] > 0:
                 cur_sign = pos
             else:
                 cur_sign = neg
             if not cur_sign == last_sign: #if crossed zero
-                last_sign = cur_sign
-                half_cycles.append(cur_half_cycle)
-                cur_half_cycle = []
+                if cur_sign == pos:
+                    if first:
+                        first = False
+                        cur_cycle = []
+                    if not len(cur_cycle) == 0:
+                        cycles.append(cur_cycle)
+                        cur_cycle = []
+                last_sign = cur_sign 
+                                
+                        
 
+        '''
         #calculate the trigger point
         smart_array = np.array(np.absolute(data[:,0]))
         kmeans = KMeans(n_clusters=2).fit(smart_array.reshape(-1,1))
@@ -95,19 +105,8 @@ for datasetname in sorted(metadata.keys()):
         #if (trigger > 1): # this device always draws at least 1 amp... hard to say if it is off... throw it away
         #    print("throwing away due to never having been off: " + data_filename)
         #    continue
-        #print("low: " + str(low))
+        '''
         trigger = 2
-        powers = []
-        for idx, half_cycle in enumerate(half_cycles):
-            if len(half_cycle) > 249 and len(half_cycle) < 252: #throw away start and end
-                tot_current = 0
-                tot_voltage = 0
-                for value in half_cycle:
-                    tot_current = tot_current + abs(value[0])
-                    tot_voltage = tot_voltage + abs(value[1])
-                avg_current = tot_current/len(half_cycle)
-                avg_voltage = tot_voltage/len(half_cycle)
-                powers.append(avg_current*avg_voltage)
         '''
         print(powers)
         plt.plot(data)
@@ -115,19 +114,19 @@ for datasetname in sorted(metadata.keys()):
         
         print(data_filename, out_filename)
         exit()
+        
         '''
         #extract the data
         off_idxs = []
         on_idxs = []
         last_pwr_state = off
-        for idx, half_cycle in enumerate(half_cycles):
-            if len(half_cycle) > 249 and len(half_cycle) < 252: #throw away start and end
-                tot_current = 0
-                tot_voltage = 0
+        for idx, cycle in enumerate(cycles):
+            if len(cycle) >= 499 and len(cycle) <= 501: 
                 tot_power = 0
-                for value in half_cycle:
-                    tot_power = tot_power + abs(value[0]) * abs(value[1])
-                avg_power = tot_power/len(half_cycle)
+                for value in cycle:
+                    cur_power = abs(value[0]) * abs(value[1])
+                    tot_power = tot_power + cur_power
+                avg_power = tot_power/len(cycle)
                 cur_pwr_state = on
                 if avg_power < trigger:
                     cur_pwr_state = off
@@ -142,7 +141,7 @@ for datasetname in sorted(metadata.keys()):
             throw_out_cnt = throw_out_cnt + 1
             print(throw_out_cnt)
             continue
-        print(data_filename, out_filename)
+        print(data_filename, out_filename, str(len(off_idxs)), str(len(on_idxs)))
     
 
 
@@ -150,29 +149,28 @@ for datasetname in sorted(metadata.keys()):
         final_data = []
         for off_idx in off_idxs: #these index into half cycles
             start_idx = 0
-            end_idx = len(half_cycles)
-            if off_idx - num_half_cycle >= 0:
-                start_idx = off_idx - num_half_cycle
-            if off_idx + num_half_cycle <= len(half_cycles)-1:
-                end_idx = off_idx + num_half_cycle
-            final_data.append(half_cycles[start_idx:end_idx])
+            end_idx = len(cycles)
+            if off_idx - num_cycle >= 0:
+                start_idx = off_idx - num_cycle
+            if off_idx + num_cycle <= len(cycles)-1:
+                end_idx = off_idx + num_cycle
+            final_data.append(cycles[start_idx:end_idx])
         for on_idx in on_idxs:
             start_idx = 0
-            end_idx = len(half_cycles)
-            if on_idx - num_half_cycle >= 0:
-                start_idx = on_idx - num_half_cycle
-            if on_idx + num_half_cycle <= len(half_cycles)-1:
-                end_idx = on_idx + num_half_cycle
-            final_data.append(half_cycles[start_idx:end_idx])
+            end_idx = len(cycles)
+            if on_idx - num_cycle >= 0:
+                start_idx = on_idx - num_cycle
+            if on_idx + num_cycle <= len(cycles)-1:
+                end_idx = on_idx + num_cycle
+            final_data.append(cycles[start_idx:end_idx])
         output_data = []
-        for half_cycle_group in final_data:
-            for half_cycle in half_cycle_group:
-                for sample in half_cycle:
+        for cycle_group in final_data:
+            for cycle in cycle_group:
+                for sample in cycle:
                     output_data.append(sample)
         np.save(out_filename, output_data)
+        '''
         
-        
-        ''' 
         #select last N full cycles from data
         n_cycles = 1
         frequency = 30000
