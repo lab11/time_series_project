@@ -31,11 +31,12 @@ for infilename,datasetname in metadata_filenames:
 
 
 
-
+throw_out_cnt = 0
 for datasetname in sorted(metadata.keys()):
     state_off_cnt = 0   
     for item in metadata[datasetname]:
         # collect various fields
+        #print(item)
         data_id = str(item['id'])
         location = str(item['meta']['location'])
         device_class = str(item['meta']['type']).replace(' ', '_')
@@ -95,7 +96,26 @@ for datasetname in sorted(metadata.keys()):
         #    print("throwing away due to never having been off: " + data_filename)
         #    continue
         #print("low: " + str(low))
-
+        trigger = 2
+        powers = []
+        for idx, half_cycle in enumerate(half_cycles):
+            if len(half_cycle) > 249 and len(half_cycle) < 252: #throw away start and end
+                tot_current = 0
+                tot_voltage = 0
+                for value in half_cycle:
+                    tot_current = tot_current + abs(value[0])
+                    tot_voltage = tot_voltage + abs(value[1])
+                avg_current = tot_current/len(half_cycle)
+                avg_voltage = tot_voltage/len(half_cycle)
+                powers.append(avg_current*avg_voltage)
+        '''
+        print(powers)
+        plt.plot(data)
+        plt.show()
+        
+        print(data_filename, out_filename)
+        exit()
+        '''
         #extract the data
         off_idxs = []
         on_idxs = []
@@ -103,12 +123,13 @@ for datasetname in sorted(metadata.keys()):
         for idx, half_cycle in enumerate(half_cycles):
             if len(half_cycle) > 249 and len(half_cycle) < 252: #throw away start and end
                 tot_current = 0
-
+                tot_voltage = 0
+                tot_power = 0
                 for value in half_cycle:
-                    tot_current = tot_current + abs(value[0])
-                avg_current = tot_current/len(half_cycle)
+                    tot_power = tot_power + abs(value[0]) * abs(value[1])
+                avg_power = tot_power/len(half_cycle)
                 cur_pwr_state = on
-                if avg_current < trigger:
+                if avg_power < trigger:
                     cur_pwr_state = off
                 if not cur_pwr_state == last_pwr_state: #state change
                     if last_pwr_state == off: #turning on
@@ -118,6 +139,8 @@ for datasetname in sorted(metadata.keys()):
                     last_pwr_state = cur_pwr_state
         if len(off_idxs) == 0 and len(on_idxs) == 0: #no state changes found
             print("throwing away due to never having been off: " + data_filename)
+            throw_out_cnt = throw_out_cnt + 1
+            print(throw_out_cnt)
             continue
         print(data_filename, out_filename)
     
