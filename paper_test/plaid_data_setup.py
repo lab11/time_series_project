@@ -333,7 +333,7 @@ def train_cycle_sequence_nn(graph, tf_input, tf_expected, tf_sequences, optimize
     TrainingMaxLen = max_len
     TrainingSequenceLengths = np.array(TrainingSequenceLengths, dtype=np.int32)
     TrainingData = np.zeros((len(training_device_data), max_len, len(np.unique(training_labels))))
-    
+
     # Do the same for the validation data
     ValidationSequenceLengths = []
     max_len = 0
@@ -357,6 +357,22 @@ def train_cycle_sequence_nn(graph, tf_input, tf_expected, tf_sequences, optimize
     ValidationLabels = np.array(validation_device_label)
     OneHotTrainingLabels = np.eye(len(np.unique(training_labels)))[TrainingLabels.astype(int)]
     OneHotValidationLabels = np.eye(len(np.unique(validation_labels)))[ValidationLabels.astype(int)]
+
+    # determine probabilities of selection for each trace
+    #  - the probability of selecting each class should be equal
+    #  - the probability of selecting any trace within a single class should be equal
+    n_classes = len(np.unique(training_labels))
+    class_prob = 1.0/n_classes
+    device_prob = np.zeros(n_classes)
+    TrainingData_probabilities = np.zeros(len(TrainingLabels))
+    for label in TrainingLabels:
+        device_prob[int(label)] += 1.0
+    for index, count in enumerate(device_prob):
+        device_prob[index] = class_prob/count
+    for index in range(len(TrainingData_probabilities)):
+        TrainingData_probabilities[index] = device_prob[int(TrainingLabels[index])]
+
+
 
     with graph.as_default():
 
@@ -386,7 +402,7 @@ def train_cycle_sequence_nn(graph, tf_input, tf_expected, tf_sequences, optimize
                 step += 1
 
                 # select data to train on and test on for this iteration
-                batch_nums = np.random.choice(TrainingData.shape[0], batch_size)
+                batch_nums = np.random.choice(TrainingData.shape[0], batch_size, p=TrainingData_probabilities)
 
                 # run training
                 sess.run(optimizer, feed_dict = {tf_input: TrainingData[batch_nums], tf_expected: OneHotTrainingLabels[batch_nums], tf_sequences: TrainingSequenceLengths[batch_nums]})
@@ -404,8 +420,6 @@ def train_cycle_sequence_nn(graph, tf_input, tf_expected, tf_sequences, optimize
                     # validation accuracy
                     validation_loss, validation_accuracy, validation_preds, validation_pred_scores, validation_correct_preds = sess.run(evaluation_args, feed_dict={tf_input: ValidationData, tf_expected: OneHotValidationLabels, tf_sequences: ValidationSequenceLengths})
 
-                    print(training_loss)
-                    print(validation_loss)
                     # print overal statistics
                     print("Step " + str(step) + \
                             ", Training Loss= " + "{: >8.3f}".format(training_loss) + \

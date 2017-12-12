@@ -1,3 +1,5 @@
+#! /usr/bin/env python3
+
 import tensorflow as tf
 import numpy as np
 import sys
@@ -5,12 +7,12 @@ import sys
 from plaid_data_setup import get_input_len, get_labels_len, train_cycle_nn, gen_data, train_cycle_sequence_nn, train_cycle_hierarchy_nn
 
 # Parametsr for synthetic data
-batch_size = 10 
+batch_size = 10
 trace_prediciton_length = 7
 padded_trace_prediction_length = trace_prediciton_length + 10 # In my head this should be the timestamp?
 num_labels = 11
 
-#LSTM parameters. 
+#LSTM parameters.
 num_units = 22
 learning_rate = .005
 
@@ -35,9 +37,9 @@ seqlen = tf.placeholder(tf.int32, None) # The true sequence lengths of the input
 
 cell = tf.contrib.rnn.BasicLSTMCell(num_units) # Single layer LSTM
 
-outputs, state = tf.nn.dynamic_rnn(cell=cell, 
-								 inputs=inputs, 
-								 sequence_length=seqlen, # Tensorflow uses this to automatically mask out the zero padding 
+outputs, state = tf.nn.dynamic_rnn(cell=cell,
+								 inputs=inputs,
+								 sequence_length=seqlen, # Tensorflow uses this to automatically mask out the zero padding
 								 dtype=tf.float32)
 
 last_output = tf.gather_nd(outputs, tf.stack([tf.range(tf.shape(outputs)[0]), seqlen-1], axis=1)) # This gets the last output before zero padding
@@ -56,7 +58,7 @@ loss = tf.reduce_mean(cost)
 optimizer = tf.train.AdamOptimizer(learning_rate = learning_rate)
 train_op = optimizer.minimize(loss)
 
-# Eval Shit 
+# Eval Shit
 predictions = tf.argmax(softmax, 1)
 pred_scores = tf.reduce_max(softmax,1)
 correct_pred = tf.equal(predictions, tf.argmax(correct_labels, 1)) # check the index with the largest value
@@ -69,15 +71,15 @@ train_cycle_sequence_nn(lstm_graph, inputs, correct_labels, seqlen, train_op, ev
 
 """
 
-test_args = [inputs, outputs, last_output] 
+test_args = [inputs, outputs, last_output]
 
 with tf.Session() as sess:
 	sess.run(init)
 
 	step = 0
 
-	while True: 
-		step += 1 
+	while True:
+		step += 1
 
 
 
@@ -94,7 +96,7 @@ with tf.Session() as sess:
 	print(test_puts.shape)
 	print(test_last_put.shape)
 	#print(test_last_put)
-	
+
 	#print(test_last_put[0])
 	#print(tf.shape(test_last_put[0]))
 """
