@@ -60,7 +60,7 @@ for fname in sorted(fnames):
 
 # save big data array
 dirname = "./"
-np.save(dirname + "traces_all_bundle", data[0:index+1])
-np.save(dirname + "traces_all_nameclass", nameclass[0:index+1])
-np.save(dirname + "traces_all_class_map", class_map)
-np.save(dirname + "traces_all_name_map", name_map)
+np.save(dirname + "traces_event_bundle", data[0:index+1])
+np.save(dirname + "traces_event_nameclass", nameclass[0:index+1])
+np.save(dirname + "traces_event_class_map", class_map)
+np.save(dirname + "traces_event_name_map", name_map)
