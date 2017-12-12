@@ -9,6 +9,8 @@ from sklearn import preprocessing
 import sys
 import os
 import argparse
+import time
+import uuid
 
 # ensure that we always "randomly" run in a repeatable way
 RANDOM_SEED = 21
@@ -742,9 +744,13 @@ def train_cycle_nn(graph, tf_input, tf_expected, optimizer, dropout_prob, evalua
                 if(len(index[0]) > 0):
                     id_to_labels[i] = ValidationLabels[index[0][0]]
 
+            # keep track of accuracy values
+            accuracy_records = []
+            max_validation_accuracy = 0
 
             # iterate forever training model
             step = 1
+            start_time = time.time()
             while True:
                 step += 1
 
@@ -780,7 +786,8 @@ def train_cycle_nn(graph, tf_input, tf_expected, optimizer, dropout_prob, evalua
                     # print overall statistics
                     print("Step " + str(step) + \
                             ", Training Loss= " + "{: >8.3f}".format(training_loss) + \
-                            ", Validation Loss= " + "{: >8.3f}".format(validation_loss))
+                            ", Validation Loss= " + "{: >8.3f}".format(validation_loss) + \
+                            " (Second {:d})".format(int(time.time()-start_time)))
                     print("--------------------------------------------------------------")
 
                     # determine per-class results and print
@@ -804,15 +811,27 @@ def train_cycle_nn(graph, tf_input, tf_expected, optimizer, dropout_prob, evalua
                     print("  Weighted Grouped Total   |    {:.3f}       |      {:.3f}".format(training_grouped_weighted_accuracy, validation_grouped_weighted_accuracy))
                     print(confusion_matrix(ValidationLabels[validation_nums], validation_preds))
 
-                    if (maxstep != -1 and step >= maxstep) or (earlyStopping and training_grouped_weighted_accuracy > 0.90 and ( \
-                            (validation_grouped_weighted_accuracy > 0.95) or \
-                            (step >= 100000 and validation_grouped_weighted_accuracy > 0.90) or \
-                            (step >= 150000 and validation_grouped_weighted_accuracy > 0.85) or \
-                            (step >= 200000 and validation_grouped_weighted_accuracy > 0.80) or \
-                            (step >= 300000) \
-                            )):
+                    # record accuracies
+                    accuracy_records.append((step, validation_grouped_weighted_accuracy))
+                    if validation_grouped_weighted_accuracy > max_validation_accuracy:
+                        max_validation_accuracy = validation_grouped_weighted_accuracy
+
+                    #if (maxstep != -1 and step >= maxstep) or (earlyStopping and training_grouped_weighted_accuracy > 0.90 and ( \
+                    #        (validation_grouped_weighted_accuracy > 0.95) or \
+                    #        (step >= 100000 and validation_grouped_weighted_accuracy > 0.90) or \
+                    #        (step >= 150000 and validation_grouped_weighted_accuracy > 0.85) or \
+                    #        (step >= 200000 and validation_grouped_weighted_accuracy > 0.80) or \
+                    #        (step >= 300000) \
+                    #        )):
+                    if (maxstep != -1 and step >= maxstep):
                         print("Completed at step " + str(step))
-                        return validation_grouped_weighted_accuracy
+
+                        # save recorded accuracy data
+                        accuracies_filename = 'recorded_accuracies_' + str(uuid.uuid4())
+                        np.save(accuracies_filename, accuracy_records)
+                        print("Saved accuracy records to '" + accuracies_filename + ".npy'")
+
+                        return max_validation_accuracy
 
 def run_cycle_nn(graph, tf_input, tf_expected, evaluation_args, generated_data):
     #runs a forward pass on the cycle NN
