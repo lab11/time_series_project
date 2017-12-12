@@ -5,7 +5,7 @@ import numpy as np
 from sklearn import datasets
 import sys
 
-from plaid_data_setup import get_input_len, get_labels_len, train_cycle_nn, gen_data
+from plaid_data_setup import get_input_len, get_labels_len, train_cycle_nn, gen_cross_validation_data, select_cross_validation_set, select_cross_validation_sets
 
 
 def build_nn():
@@ -62,6 +62,21 @@ def build_nn():
         return graph, X, Y, train_op, dropout_prob, [loss_op, accuracy, predictions, pred_scores, pred_scores_full, correct_pred]
 
 if __name__ == "__main__":
+
+    # create dataset
+    cross_validation_set_count = 5
+    Data, Labels, Names, labelstrs, num_names, cross_validation_indices = gen_cross_validation_data(cross_validation_set_count)
+
+    # select cross validation set
+    training_indices, validation_indices = select_cross_validation_sets(cross_validation_indices, 1)
+    training_data = Data[training_indices]
+    training_labels = Labels[training_indices]
+    training_names = Names[training_indices]
+    validation_data = Data[validation_indices]
+    validation_labels = Labels[validation_indices]
+    validation_names = Names[validation_indices]
+    data_input = (training_data, validation_data, training_labels, validation_labels, training_names, validation_names, labelstrs, num_names)
+
     # train the neural network on test data
     graph, X, Y, optimizer, dropout_prob, evaluation_args = build_nn()
-    train_cycle_nn(graph, X, Y, optimizer, dropout_prob, evaluation_args, gen_data())
+    train_cycle_nn(graph, X, Y, optimizer, dropout_prob, evaluation_args, data_input)
