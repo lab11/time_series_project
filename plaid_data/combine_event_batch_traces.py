@@ -24,7 +24,7 @@ for fname in sorted(fnames):
 
 print(max_cycles)
 
-data = np.zeros((len(fnames), max_cycles, 500, 2, 2))
+data = np.zeros((len(fnames), max_cycles, 500, 2))
 nameclass = np.zeros((len(fnames), 2))
 
 index = -1

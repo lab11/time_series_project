@@ -34,14 +34,15 @@ def gen_all_data():
     data = np.load("../plaid_data/traces_all_bundle.npy")
     labelnames = np.load("../plaid_data/traces_all_nameclass.npy")
     Data = data
-    Labels = labelnames[1]
-    Names = labelnames[0]
+    Labels = labelnames[:,1]
+    Names = labelnames[:,0]
     num_names = np.max(Names) + 1
 
     # normalize all waveform magnitude to the maximum for that type
     data_len = len(Data[0])
     Data[:,:,:,0] /= np.amax(np.absolute(Data[:,:,:,0])) # current
     Data[:,:,:,1] /= np.amax(np.absolute(Data[:,:,:,1])) # current
+    Data = np.reshape(Data,[Data.shape[0],10,1000])
 
     # get label string names and pad spaces to make them equal length
     labelstrs = np.load("../plaid_data/traces_class_map.npy")
@@ -55,7 +56,7 @@ def gen_all_data():
         sys.exit()
 
     # generate training and validation datasets (already shuffled)
-    TrainingData, TrainingLabels, TrainingNames, ValidationData, ValidationLabels, ValidationNames = generate_training_and_validation(Data, Labels, Names, 0.20)
+    TrainingData, TrainingLabels, TrainingNames, ValidationData, ValidationLabels, ValidationNames = generate_all_training_and_validation(Data, Labels, Names, 0.20)
 
     return (TrainingData, ValidationData, TrainingLabels, ValidationLabels, TrainingNames, ValidationNames, labelstrs, num_names)
 
@@ -131,6 +132,76 @@ def get_input_len():
 def get_labels_len():
     # number of classes saved
     return np.shape(np.load("../plaid_data/traces_class_map.npy"))[0]
+
+# function to generate a training and validation, with equal label representation
+def generate_all_training_and_validation (dataset, labelset, nameset, testing_percent):
+    data_len = dataset.shape[2]
+    training_data =     np.empty((0, 10, 1000))
+    validation_data =   np.empty((0, 10, 1000))
+
+    training_labels =   np.empty((0))
+    validation_labels = np.empty((0))
+    training_names =   np.empty((0))
+    validation_names = np.empty((0))
+
+    for label in sorted(range(int(max(labelset+1)))):
+        # find indices matching this class
+        matching_indices = np.flatnonzero((labelset == label))
+        matching_data = dataset[matching_indices]
+        matching_labels = labelset[matching_indices]
+        matching_names = nameset[matching_indices]
+
+        # determine number of traces we need to leave out
+        class_trace_count = len(matching_names)
+        min_trace_count = int(testing_percent*class_trace_count)
+
+        # iterate through each device in this class
+        unique_names, unique_name_counts = np.unique(matching_names, return_counts=True)
+        selected_count = 0
+        while selected_count < min_trace_count:
+            # select an index
+            index = np.random.randint(0, len(unique_names))
+
+            # can't select the same device twice
+            if unique_name_counts[index] == -1:
+                continue
+
+            # add selected device to validation set
+            name = unique_names[index]
+            device_matching_indices = np.flatnonzero((matching_names == name))
+            validation_data = np.vstack((validation_data, matching_data[device_matching_indices]))
+            validation_labels = np.append(validation_labels, matching_labels[device_matching_indices])
+            validation_names = np.append(validation_names, matching_names[device_matching_indices])
+
+            # add trace count from selected device
+            selected_count += unique_name_counts[index]
+            unique_name_counts[index] = -1
+
+        # add the rest to the training data
+        for index in range(len(unique_names)):
+            # skip validation data
+            if unique_name_counts[index] == -1:
+                continue
+
+            # add to training set
+            name = unique_names[index]
+            device_matching_indices = np.flatnonzero((matching_names == name))
+            training_data = np.vstack((training_data, matching_data[device_matching_indices]))
+            training_labels = np.append(training_labels, matching_labels[device_matching_indices])
+            training_names = np.append(training_names, matching_names[device_matching_indices])
+
+    # shuffle the validation and data arrays
+    permutation = np.random.permutation(training_data.shape[0])
+    shuffled_training_data = training_data[permutation]
+    shuffled_training_labels = training_labels[permutation]
+    shuffled_training_names = training_names[permutation]
+    permutation = np.random.permutation(validation_data.shape[0])
+    shuffled_validation_data = validation_data[permutation]
+    shuffled_validation_labels = validation_labels[permutation]
+    shuffled_validation_names = validation_names[permutation]
+
+    # complete! Return data
+    return shuffled_training_data, shuffled_training_labels, shuffled_training_names, shuffled_validation_data, shuffled_validation_labels, shuffled_validation_names
 
 
 # function to generate a training and validation, with equal label representation
