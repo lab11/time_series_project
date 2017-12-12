@@ -1,5 +1,5 @@
-
 #! /usr/bin/env python3
+
 import numpy as np
 import json
 import os
@@ -33,7 +33,7 @@ for infilename,datasetname in metadata_filenames:
 
 throw_out_cnt = 0
 for datasetname in sorted(metadata.keys()):
-    state_off_cnt = 0   
+    state_off_cnt = 0
     for item in metadata[datasetname]:
         # collect various fields
         #print(item)
@@ -58,13 +58,13 @@ for datasetname in sorted(metadata.keys()):
 
         # read input file
         data = np.load(data_filename)
-        
+
         # some defines for readability
         neg = False
         pos = True
         off = False
         on = True
-        
+
         # number of half cycles on either side of the transitions
         num_cycle = 5
 
@@ -81,10 +81,10 @@ for datasetname in sorted(metadata.keys()):
                 cycles.append(cur_cycle)
             i = i + 2
 #        for zero_crossing in zero_crossings:
-                
+
 #        exit()
         '''
-         
+
         last_sign = True
         first = True
         pos_cnt = 0
@@ -125,8 +125,8 @@ for datasetname in sorted(metadata.keys()):
                 else:
                     if first:
                         cur_cycle = []
-                  
-                last_sign = cur_sign 
+
+                last_sign = cur_sign
             '''
         trigger = 2
 
@@ -189,7 +189,7 @@ for datasetname in sorted(metadata.keys()):
                 dif = len(cycles)-end_idx
                 start_idx = start_idx - dif
                 end_idx = len(cycles)-1
-            #print(start_idx,on_idx,end_idx)    
+            #print(start_idx,on_idx,end_idx)
             #if on_idx - num_cycle >= 0:
             #    start_idx = on_idx - num_cycle
             #if on_idx + num_cycle <= len(cycles)-1:
@@ -207,7 +207,7 @@ for datasetname in sorted(metadata.keys()):
         #plt.plot(output_data)
         #plt.show()
         np.save(out_filename, np.reshape(output_data[0:5000],[-1,500,2]))
-        
+
         '''
         #select last N full cycles from data
         n_cycles = 1
@@ -222,7 +222,7 @@ for datasetname in sorted(metadata.keys()):
                 end = z_cross
                 break;
         two_periods = data[z_cross + 1 - period_len * n_cycles: z_cross + 1]
-        
+
         event_col = np.zeros((two_periods.shape[0],1))
         avg_current = np.average(np.absolute(two_periods[:,0]))
         if avg_current < off_trigger_A:
