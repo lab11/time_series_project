@@ -73,11 +73,25 @@ for datasetname in sorted(metadata.keys()):
         last_sign = True
         cycles = []
         cur_cycle = []
+        voltage = data[:,1]
+        '''
+        zero_crossings = np.where(np.diff(np.signbit(voltage)))[0]
+        for i,zc in enumerate(zero_crossings):
+            if i+2 < len(zero_crossings):
+#                print(zc, zero_crossings[i+1])
+                cur_cycle=data[zc:zero_crossings[i+2]]
+                cycles.append(cur_cycle)
+            i = i + 2
+#        for zero_crossing in zero_crossings:
+                
+#        exit()
+        '''
+         
         first = True
         for row in data:
-            cur_cycle.append(list(row))
+            cur_cycle.append(row)
             #determine the sign
-            if row[1] > 0:
+            if row[1] >= 0:
                 cur_sign = pos
             else:
                 cur_sign = neg
@@ -87,44 +101,22 @@ for datasetname in sorted(metadata.keys()):
                         first = False
                         cur_cycle = []
                     if not len(cur_cycle) == 0:
+                        #print(len(cur_cycle))
                         cycles.append(cur_cycle)
                         cur_cycle = []
                 last_sign = cur_sign 
-                                
-                        
-
-        '''
-        #calculate the trigger point
-        smart_array = np.array(np.absolute(data[:,0]))
-        kmeans = KMeans(n_clusters=2).fit(smart_array.reshape(-1,1))
-        high = kmeans.cluster_centers_[0][0]
-        low = kmeans.cluster_centers_[1][0]
-        #this probably should be done with linear discriminant analysis... 
-        #but midpoint is fine........
-        trigger = (high+low)/2
-        #if (trigger > 1): # this device always draws at least 1 amp... hard to say if it is off... throw it away
-        #    print("throwing away due to never having been off: " + data_filename)
-        #    continue
-        '''
+        
         trigger = 2
-        '''
-        print(powers)
-        plt.plot(data)
-        plt.show()
-        
-        print(data_filename, out_filename)
-        exit()
-        
-        '''
+
         #extract the data
         off_idxs = []
         on_idxs = []
         last_pwr_state = off
         for idx, cycle in enumerate(cycles):
-            if len(cycle) >= 499 and len(cycle) <= 501: 
+            if len(cycle) >= 499 and len(cycle) <= 501:
                 tot_power = 0
-                for value in cycle:
-                    cur_power = abs(value[0]) * abs(value[1])
+                for sample in cycle:
+                    cur_power = abs(sample[0]) * abs(sample[1])
                     tot_power = tot_power + cur_power
                 avg_power = tot_power/len(cycle)
                 cur_pwr_state = on
@@ -142,32 +134,54 @@ for datasetname in sorted(metadata.keys()):
             print(throw_out_cnt)
             continue
         print(data_filename, out_filename, str(len(off_idxs)), str(len(on_idxs)))
-    
+
+
 
 
         #grab data around each state change (this is super gross python)
+        t_found = False
         final_data = []
         for off_idx in off_idxs: #these index into half cycles
-            start_idx = 0
-            end_idx = len(cycles)
-            if off_idx - num_cycle >= 0:
-                start_idx = off_idx - num_cycle
-            if off_idx + num_cycle <= len(cycles)-1:
-                end_idx = off_idx + num_cycle
+            start_idx = on_idx - num_cycle
+            end_idx = on_idx + num_cycle
+            if start_idx < 0:
+                end_idx = end_idx + abs(start_idx)
+                start_idx = 0
+            if end_idx >= len(cycles):
+                dif = len(cycles)-end_idx
+                start_idx = start_idx - dif
+                end_idx = len(cycles)-1
+            #print(start_idx,off_idx,end_idx,"off")
             final_data.append(cycles[start_idx:end_idx])
-        for on_idx in on_idxs:
-            start_idx = 0
-            end_idx = len(cycles)
-            if on_idx - num_cycle >= 0:
-                start_idx = on_idx - num_cycle
-            if on_idx + num_cycle <= len(cycles)-1:
-                end_idx = on_idx + num_cycle
+            t_found = True
+            break
+        if not t_found:
+         for on_idx in on_idxs:
+            start_idx = on_idx - num_cycle
+            end_idx = on_idx + num_cycle
+            if start_idx < 0:
+                end_idx = end_idx + abs(start_idx)
+                start_idx = 0
+            if end_idx >= len(cycles):
+                dif = len(cycles)-end_idx
+                start_idx = start_idx - dif
+                end_idx = len(cycles)-1
+            #print(start_idx,on_idx,end_idx)    
+            #if on_idx - num_cycle >= 0:
+            #    start_idx = on_idx - num_cycle
+            #if on_idx + num_cycle <= len(cycles)-1:
+            #    end_idx = on_idx + num_cycle
+
+            #if end_idx - start_idx < num_cycle*2: #either at the end or beginning
+            #print(start_idx,on_idx,end_idx,"on")
             final_data.append(cycles[start_idx:end_idx])
+            break
         output_data = []
         for cycle_group in final_data:
             for cycle in cycle_group:
                 for sample in cycle:
                     output_data.append(sample)
+        print(len(output_data))
         np.save(out_filename, output_data)
         '''
         
