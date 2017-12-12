@@ -11,7 +11,7 @@ import os
 import argparse
 
 # ensure that we always "randomly" run in a repeatable way
-RANDOM_SEED = 42
+RANDOM_SEED = 21
 tf.set_random_seed(RANDOM_SEED)
 
 #grab input arguments
@@ -55,6 +55,36 @@ def gen_data():
     TrainingData, TrainingLabels, TrainingNames, ValidationData, ValidationLabels, ValidationNames = generate_training_and_validation(Data, Labels, Names, 0.20)
 
     return (TrainingData, ValidationData, TrainingLabels, ValidationLabels, TrainingNames, ValidationNames, labelstrs, num_names)
+
+def gen_cross_validation_data(cross_validation_set_count):
+    # load and shuffle data
+    data = np.load("../plaid_data/traces_bundle.npy")
+    np.random.shuffle(data)
+    Data = data[:, 0:-2]
+    Labels = data[:,-1]
+    Names = data[:,-2]
+    num_names = np.max(Names) + 1
+
+    # normalize all waveform magnitude to the maximum for that type
+    data_len = len(Data[0])
+    Data[:, :data_len//2] /= np.amax(np.absolute(Data[:, :data_len//2])) # current
+    Data[:, data_len//2:] /= np.amax(np.absolute(Data[:, data_len//2:])) # voltage
+
+    # get label string names and pad spaces to make them equal length
+    labelstrs = np.load("../plaid_data/traces_class_map.npy")
+    max_str_len = max([len(s) for s in labelstrs])
+    for index, label in enumerate(labelstrs):
+        labelstrs[index] = label + ' '*(max_str_len - len(label))
+
+    # quick idiot test
+    if max(Labels)+1 != len(labelstrs):
+        print("Error: Number of classes doesn't match labels input")
+        sys.exit()
+
+    # generate training and validation datasets (already shuffled)
+    cross_validation_indices = generate_cross_validation_sets(Data, Labels, Names, cross_validation_set_count)
+
+    return Data, Labels, Names, labelstrs, num_names, cross_validation_indices
 
 def get_input_len():
     # length of data dimension, minus 2 (label and name)
@@ -138,6 +168,43 @@ def generate_training_and_validation (dataset, labelset, nameset, testing_percen
 
     # complete! Return data
     return shuffled_training_data, shuffled_training_labels, shuffled_training_names, shuffled_validation_data, shuffled_validation_labels, shuffled_validation_names
+
+def generate_cross_validation_sets (dataset, labelset, nameset, number_of_splits):
+
+    cv_indices_list = [[] for index in range(number_of_splits)]
+
+    # put each device in only one cross-validation set, split devices in a class equally
+    for label in range(int(max(labelset) + 1)):
+        # find indices that match this label
+        class_indices = np.flatnonzero((labelset == label))
+
+        # find devices in this class
+        # shuffle devices here
+        device_names = np.unique(nameset[class_indices])
+        np.random.shuffle(device_names)
+
+        # create list of devices in each cross-validation bin
+        # shuffle bins here so the last device-count bin isn't always last
+        device_bins = np.array_split(device_names, number_of_splits)
+        np.random.shuffle(device_bins)
+
+        # find indices in each bin
+        for index in range(number_of_splits):
+            cv_indices_list[index] += np.flatnonzero(np.in1d(nameset, device_bins[index])).tolist()
+
+    # convert the indices list to a numpy object
+    cv_indices_array = np.array([np.array(item) for item in cv_indices_list])
+    return cv_indices_array
+
+def select_cross_validation_set (cv_indices_array, selection_number):
+
+    # training indices are all that don't match the selection number
+    training_indices = np.concatenate(np.delete(np.copy(cv_indices_array), selection_number))
+
+    # validation indices are at the selection number
+    validation_indices = cv_indices_array[selection_number]
+
+    return training_indices, validation_indices
 
 def group_accuracy_by_device(num_classes, num_devices, predictions, data_to_device_map, device_to_class_map):
     #calculate device grouped accuracy
@@ -725,7 +792,7 @@ def train_cycle_nn(graph, tf_input, tf_expected, optimizer, dropout_prob, evalua
 
                 if maxstep != -1 and step >= maxstep:
                     print("Completed at step " + str(step))
-                    sys.exit()
+                    return validation_grouped_weighted_accuracy
 
 def run_cycle_nn(graph, tf_input, tf_expected, evaluation_args, generated_data):
     #runs a forward pass on the cycle NN
