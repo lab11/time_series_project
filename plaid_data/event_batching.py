@@ -206,7 +206,7 @@ for datasetname in sorted(metadata.keys()):
                     output_data.append(sample)
         #plt.plot(output_data)
         #plt.show()
-        np.save(out_filename, np.reshape(output_data[0:5000],[-1,500,2]))
+        np.save(out_filename, output_data[0:5000])
 
         '''
         #select last N full cycles from data
