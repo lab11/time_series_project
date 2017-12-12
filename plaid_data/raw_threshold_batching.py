@@ -8,6 +8,7 @@ import collections
 from sklearn.cluster import KMeans
 from sklearn import svm
 import matplotlib.pyplot as plt
+import argparse
 
 """
 find state transitions in POWERLBADE DATA
@@ -25,6 +26,16 @@ if not (os.path.exists("numpy_arrays/") and os.path.isdir("PLAID/")):
 # make folders if needed
 if not os.path.exists('raw_threshold_batch'): #different folder for events
     os.makedirs('raw_threshold_batch')
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--plot", action='store_true', help="Use to generate a buttload of plots")
+
+args = parser.parse_args()
+
+plotter = False
+if args.plot:
+    print("PLOT SOME SHIT")
+    plotter = True
 
 # collect metadata
 metadata_filenames = [("PLAID/meta1.json", 'dataset1'), ("PLAID/meta2StatusesRenamed.json", 'dataset2')]
@@ -61,6 +72,7 @@ for datasetname in sorted(metadata.keys()):
         data_filename = 'numpy_arrays/' + data_id + '.npy'
         out_filename = 'raw_threshold_batch/' + 'numpy-power-event-' + device_class + '-' + device_state + '-' + device_full_name + '-file' + data_id + '.npy' #added event- to the regular filename
         outplot_clipped = 'raw_threshold_batch_graphs/' + data_id + "-clipped.png"
+        outplot = 'raw_threshold_batch_graphs/' + data_id + ".png"
         # read input file
         data = np.load(data_filename)
 
@@ -85,7 +97,7 @@ for datasetname in sorted(metadata.keys()):
                 transition_point = zero_crossings[i+2]
                 no_transition = False
                 break
-            if np.average(next_cycle_pwr) >= 2 * np.average(current_cycle_pwr):
+            if np.average(next_cycle_pwr) >= 2 * np.average(current_cycle_pwr) and current_cycle_pwr > 2 and next_cycle_pwr > 2:
                 transition_point = zero_crossings[i+2]
                 no_transition = False
                 break
@@ -97,6 +109,12 @@ for datasetname in sorted(metadata.keys()):
             if device_class not in no_transition_classes:
                 no_transition_classes[device_class] = 0
             no_transition_classes[device_class] += 1
+            outplot = 'raw_threshold_batch_graphs_false/' + data_id + ".png"
+            if plotter:
+                plt.plot(power_data, 'ro')
+                plt.savefig(outplot)
+                plt.clf()
+                plt.close()
 
         else: 
             if device_class not in transition_classes:
@@ -114,8 +132,15 @@ for datasetname in sorted(metadata.keys()):
                 no_classes[device_class] += 1
             else:
                 output_data = power_data[transition_point:end_point]
-                plt.plot(output_data)
-                plt.save(outplot_clipped)
+                if plotter:
+                    plt.plot(output_data, 'ro')
+                    plt.savefig(outplot_clipped)
+                    plt.clf()
+                    plt.close()
+                    plt.plot(power_data, 'ro')
+                    plt.savefig(outplot)
+                    plt.clf()
+                    plt.close()
                 np.save(out_filename, output_data)
 
         #print(data)
