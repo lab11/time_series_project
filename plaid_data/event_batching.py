@@ -1,3 +1,4 @@
+
 #! /usr/bin/env python3
 import numpy as np
 import json
@@ -90,8 +91,6 @@ for datasetname in sorted(metadata.keys()):
         #this probably should be done with linear discriminant analysis... 
         #but midpoint is fine........
         trigger = (high+low)/2
-        print(trigger)
-        exit()
         #if (trigger > 1): # this device always draws at least 1 amp... hard to say if it is off... throw it away
         #    print("throwing away due to never having been off: " + data_filename)
         #    continue
