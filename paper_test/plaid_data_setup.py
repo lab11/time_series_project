@@ -59,6 +59,7 @@ def gen_data():
 def gen_cross_validation_data(cross_validation_set_count):
     # load and shuffle data
     data = np.load("../plaid_data/traces_bundle.npy")
+    np.random.seed(RANDOM_SEED)
     np.random.shuffle(data)
     Data = data[:, 0:-2]
     Labels = data[:,-1]
@@ -205,6 +206,17 @@ def select_cross_validation_set (cv_indices_array, selection_number):
     validation_indices = cv_indices_array[selection_number]
 
     return training_indices, validation_indices
+
+def select_cross_validation_sets (cv_indices_array, selection_numbers):
+
+    # training indices are all that don't match the selection number
+    training_indices = np.concatenate(np.delete(np.copy(cv_indices_array), selection_numbers))
+
+    # validation indices are at the selection number
+    validation_indices = cv_indices_array[selection_numbers]
+
+    return training_indices, validation_indices
+
 
 def group_accuracy_by_device(num_classes, num_devices, predictions, data_to_device_map, device_to_class_map):
     #calculate device grouped accuracy
