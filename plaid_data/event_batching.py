@@ -83,13 +83,15 @@ for datasetname in sorted(metadata.keys()):
                 cur_half_cycle = []
 
         #calculate the trigger point
-        smart_array = np.array(np.absolute(data))
-        kmeans = KMeans(n_clusters=2).fit(smart_array)
+        smart_array = np.array(np.absolute(data[:,0]))
+        kmeans = KMeans(n_clusters=2).fit(smart_array.reshape(-1,1))
         high = kmeans.cluster_centers_[0][0]
         low = kmeans.cluster_centers_[1][0]
         #this probably should be done with linear discriminant analysis... 
         #but midpoint is fine........
         trigger = (high+low)/2
+        print(trigger)
+        exit()
         #if (trigger > 1): # this device always draws at least 1 amp... hard to say if it is off... throw it away
         #    print("throwing away due to never having been off: " + data_filename)
         #    continue
