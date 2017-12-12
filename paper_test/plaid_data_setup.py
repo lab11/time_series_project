@@ -13,7 +13,6 @@ import argparse
 # ensure that we always "randomly" run in a repeatable way
 RANDOM_SEED = 42
 tf.set_random_seed(RANDOM_SEED)
-np.random.seed(RANDOM_SEED)
 
 #grab input arguments
 parser = argparse.ArgumentParser(description='Run neural network')
@@ -29,6 +28,7 @@ maxstep = args.maxstep
 def gen_data():
     # load and shuffle data
     data = np.load("../plaid_data/traces_bundle.npy")
+    np.random.seed(RANDOM_SEED)
     np.random.shuffle(data)
     Data = data[:, 0:-2]
     Labels = data[:,-1]
