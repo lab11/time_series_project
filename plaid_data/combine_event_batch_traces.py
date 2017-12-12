@@ -4,11 +4,11 @@ import numpy as np
 import glob
 import os
 from zlib import crc32
-import sys
 
-fnames = glob.glob("raw_threshold_batch/numpy-power-event-*.npy")
+fnames = glob.glob("plaid_paper_batch_data_events/*.npy")
 
-data = np.zeros((len(fnames), 15000 + 2), dtype=float)
+
+data = np.zeros((len(fnames), 10000 + 2), dtype=float)
 class_map = []
 name_map = []
 
@@ -17,15 +17,14 @@ for fname in sorted(fnames):
     # get unique device name from the filename
     # note: device name is a uniquely identifying string for that device including
     #   the dataset, house number, and model/make of the device
-    device_name = os.path.basename(fname).split('-')[5]
+    device_name = os.path.basename(fname).split('-')[3]
 
     # create map of device names we are including
     if device_name not in name_map:
         name_map.append(device_name)
 
     # get device class from the filename
-    class_name = os.path.basename(fname).split('-')[3]
-
+    class_name = os.path.basename(fname).split('-')[1]
     if class_name not in class_map:
         class_map.append(class_name)
 
@@ -41,7 +40,6 @@ for fname in sorted(fnames):
 
 # save big data array
 dirname = "./"
-np.save(dirname + "raw_threshold_numpy_power_traces_bundle", data[0:index+1])
-np.save(dirname + "raw_threshold_numpy_power_traces_class_map", class_map)
-np.save(dirname + "raw_threshold_numpy_power_traces_name_map", name_map)
-print("Done combining")
+np.save(dirname + "traces_event_bundle", data[0:index+1])
+np.save(dirname + "traces_event_class_map", class_map)
+np.save(dirname + "traces_event_name_map", name_map)
