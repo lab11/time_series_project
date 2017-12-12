@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 
 """
 find state transitions in POWERLBADE DATA
-power-event - instantaneous power 
+power-event - instantaneous power
 """
 
 # check that the PLAID dataset already exists
@@ -39,7 +39,7 @@ no_transition_classes = {}
 no_counter = 0
 no_classes = {}
 for datasetname in sorted(metadata.keys()):
-    state_off_cnt = 0   
+    state_off_cnt = 0
     for item in metadata[datasetname]:
         # collect various fields
         data_id = str(item['id'])
@@ -98,7 +98,7 @@ for datasetname in sorted(metadata.keys()):
                 no_transition_classes[device_class] = 0
             no_transition_classes[device_class] += 1
 
-        else: 
+        else:
             if device_class not in transition_classes:
                 transition_classes[device_class] = 0
             transition_classes[device_class] += 1
@@ -114,8 +114,8 @@ for datasetname in sorted(metadata.keys()):
                 no_classes[device_class] += 1
             else:
                 output_data = power_data[transition_point:end_point]
-                plt.plot(output_data)
-                plt.save(outplot_clipped)
+                #plt.plot(output_data)
+                #plt.save(outplot_clipped)
                 np.save(out_filename, output_data)
 
         #print(data)
