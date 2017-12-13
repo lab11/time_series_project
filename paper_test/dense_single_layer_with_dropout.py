@@ -351,6 +351,9 @@ if __name__ == "__main__":
         FINAL_THRES = 0.825     # Final τ
         THRES_STEP = 33         # 0.825 / 33 -> 0.025
 
+        TARGET_COMPRESSION_RATIO = 40.0
+        TARGET_COMPRESSED_ACCURACY = 90.0
+
         # Make sure we're in compression mode
         sess.run(tf.assign(compress_done, 0.0))
 
@@ -384,7 +387,7 @@ if __name__ == "__main__":
             # too much at the moment
             if iteration % UPDATE_STEP == 0 and thres_update_count <= THRES_STEP:
                 cur_thres = START_THRES + thres_update_count*(FINAL_THRES - START_THRES)/THRES_STEP
-                bprint("Current threshold, τ = {:01.2f}".format(cur_thres))
+                bprint("Current threshold, τ = {:01.3f}".format(cur_thres))
                 sess.run(tf.assign(prune_threshold, cur_thres))
                 thres_update_count += 1
 
@@ -407,3 +410,7 @@ if __name__ == "__main__":
                         cur_left_num, layer_name_to_original_dimensions,
                         n_input, n_labels,
                         )
+
+                if cur_comps_ratio < TARGET_COMPRESSION_RATIO and np.mean(dev_accuracy) >= TARGET_COMPRESSED_ACCURACY:
+                    bprint("\nTarget Reached!")
+                    break
