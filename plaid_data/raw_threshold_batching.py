@@ -137,7 +137,7 @@ for datasetname in sorted(metadata.keys()):
             if device_class not in transition_classes:
                 transition_classes[device_class] = 0
             transition_classes[device_class] += 1
-            end_point = transition_point + 2520 # Grab 0.5 seconds of data
+            end_point = transition_point + 2520 # Grab 1 seconds of data
             if not pBlade: 
                 end_point = transitions_point + 50000
             if end_point >= len(power_data):
@@ -150,7 +150,7 @@ for datasetname in sorted(metadata.keys()):
                     no_classes[device_class] = 0
                 no_classes[device_class] += 1
             else:
-                output_data = power_data[transition_point:end_point]
+                output_data = current[transition_point:end_point]
                 if plotter:
                     plt.plot(output_data, 'ro')
                     plt.savefig(outplot_clipped)
