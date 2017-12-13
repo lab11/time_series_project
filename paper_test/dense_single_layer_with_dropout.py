@@ -29,7 +29,7 @@ try:
 except ImportError:
     bprint = lambda x: bprint(x)
 
-from plaid_data_setup import get_input_len, get_labels_len, train_cycle_nn, gen_data
+from plaid_data_setup import get_input_len, get_labels_len, train_cycle_nn, gen_data, group_weighted_accuracy_by_device
 
 import DeepIoT_compressor
 import DeepIoT_dropOut
@@ -192,10 +192,11 @@ def build_nn(BatchedTrainingData, BatchedTrainingLabels, BatchedEvalData, Batche
             tf.nn.softmax_cross_entropy_with_logits(
                 logits=logits_eval, labels=BatchedEvalLabels))
     predictions_eval = tf.argmax(prediction_eval, 1)
+    pred_scores_eval = tf.reduce_max(prediction_eval, 1)
     correct_pred_eval = tf.equal(predictions_eval, tf.argmax(BatchedEvalLabels, 1))
     accuracy_eval = tf.reduce_mean(tf.cast(correct_pred_eval, tf.float64))
 
-    eval_TF_ops = (loss_eval, BatchedEvalLabels, prediction_eval, accuracy_eval)
+    eval_TF_ops = (loss_eval, BatchedEvalLabels, predictions_eval, pred_scores_eval, accuracy_eval)
 
 
     #####################
@@ -256,6 +257,18 @@ if __name__ == "__main__":
     OneHotTrainingLabels = np.eye(n_classes)[TrainingLabels.astype(np.int64)]
     OneHotValidationLabels = np.eye(n_classes)[ValidationLabels.astype(np.int64)]
 
+    # Other magic computation from plaid data
+    id_to_labels = np.zeros(num_names.astype(int))
+    for i in range(0, num_names.astype(int)):
+        index = np.where(TrainingNames == i)
+        if(len(index[0]) > 0):
+            id_to_labels[i] = TrainingLabels[index[0][0]]
+
+    for i in range(0, num_names.astype(int)):
+        index = np.where(ValidationNames == i)
+        if(len(index[0]) > 0):
+            id_to_labels[i] = ValidationLabels[index[0][0]]
+
     ### # Create Batches
     ### print("Creating batches...")
     ### # Minimum number elements in the queue after a dequeue, used to ensure a level of mixing of elements.
@@ -289,16 +302,18 @@ if __name__ == "__main__":
         saver = tf.train.Saver()
         coord = tf.train.Coordinator()
 
+
+        ##############################################################################
+        ### LOAD OR TRAIN AN INITIAL UNCOMPRESSED MODEL
         CACHE_PATH = 'DeepIoT-cache'
         if os.path.exists(CACHE_PATH):
             print("Loading pre-trained, uncompressed model")
             saver.restore(sess, os.path.join(CACHE_PATH, 'model'))
             print("Loaded\n")
-
         else:
             print('='*80)
             print("Training initial model (no dropout)")
-            for iteration in range(50000):
+            for iteration in range(150_000):
                 # select data to train on and test on for this iteration
                 batch_nums = np.random.choice(TrainingData.shape[0], BATCH_SIZE)
 
@@ -311,37 +326,58 @@ if __name__ == "__main__":
                         )
 
                 if (iteration < 5) or (iteration % 999) == 0:
-                    # select data to evaluate for this iteration
-                    batch_nums_eval = np.random.choice(ValidationData.shape[0], BATCH_SIZE)
-
                     # Run evaluation
-                    loss_eval, labels_eval, prediction_eval, accuracy_eval = sess.run(eval_NN,
+                    loss_eval, labels_eval, prediction_eval, pred_scores_eval, accuracy_eval = sess.run(eval_NN,
                             feed_dict = {
-                                batch_eval_features: ValidationData[batch_nums_eval],
-                                batch_eval_labels: OneHotValidationLabels[batch_nums_eval],
+                                batch_eval_features: ValidationData,
+                                batch_eval_labels: OneHotValidationLabels,
                                 }
                             )
 
+                    wg_acc = group_weighted_accuracy_by_device(
+                            n_classes,
+                            num_names.astype(int),
+                            prediction_eval,
+                            pred_scores_eval,
+                            ValidationNames,
+                            id_to_labels,
+                            )
+
                     print("iteration {:06}".format(iteration), end='')
-                    print(" | training loss {:01.4f} accuracy {:01.2f}".format(loss, accuracy), end='')
-                    print(" | evalaution loss {:01.4f} accuracy {:01.2f}".format(loss_eval, accuracy_eval))
+                    print(" | training loss {:01.4f} accuracy {:01.3f}".format(loss, accuracy), end='')
+                    print(" | evalaution loss {:01.4f} accuracy {:01.3f} wg acc {:01.3f}".format(loss_eval, accuracy_eval, wg_acc))
             print("Finished initial training.")
             print('='*80)
 
             saver.save(sess, os.path.join(CACHE_PATH, 'model'))
+        ## END TRAIN UNCOMPRESSED
+        ##############################################################################
 
         print("\nRunning loaded model on evaluation data once first:")
         # Run evaluation
-        batch_nums_eval = np.random.choice(ValidationData.shape[0], BATCH_SIZE)
-        loss_eval, labels_eval, prediction_eval, accuracy_eval = sess.run(eval_NN,
+        loss_eval, labels_eval, prediction_eval, pred_scores_eval, accuracy_eval = sess.run(eval_NN,
                 feed_dict = {
-                    batch_eval_features: ValidationData[batch_nums_eval],
-                    batch_eval_labels: OneHotValidationLabels[batch_nums_eval],
+                    batch_eval_features: ValidationData,
+                    batch_eval_labels: OneHotValidationLabels,
                     }
                 )
 
-        print(" | evalaution loss {:01.4f} accuracy {:01.2f}".format(loss_eval, accuracy_eval))
+        wg_acc = group_weighted_accuracy_by_device(
+                n_classes,
+                num_names.astype(int),
+                prediction_eval,
+                pred_scores_eval,
+                ValidationNames,
+                id_to_labels,
+                )
 
+        print(" | evalaution loss {:01.4f} accuracy {:01.3f} wg acc {:01.3f}".format(loss_eval, accuracy_eval, wg_acc))
+
+
+
+
+        ##############################################################################
+        ### Run compression
         bprint("\nStart Compressing")
 
         # Compression configuration
@@ -393,16 +429,25 @@ if __name__ == "__main__":
 
             if (iteration < 5) or (iteration % 200 == 199):
                 # Run an evaluation
-                batch_nums_eval = np.random.choice(ValidationData.shape[0], BATCH_SIZE)
-                loss_eval, labels_eval, prediction_eval, accuracy_eval = sess.run(eval_NN,
+                loss_eval, labels_eval, prediction_eval, pred_scores_eval, accuracy_eval = sess.run(eval_NN,
                         feed_dict = {
-                            batch_eval_features: ValidationData[batch_nums_eval],
-                            batch_eval_labels: OneHotValidationLabels[batch_nums_eval],
+                            batch_eval_features: ValidationData,
+                            batch_eval_labels: OneHotValidationLabels,
                             }
                         )
+
+                wg_acc = group_weighted_accuracy_by_device(
+                        n_classes,
+                        num_names.astype(int),
+                        prediction_eval,
+                        pred_scores_eval,
+                        ValidationNames,
+                        id_to_labels,
+                        )
+
                 print("iteration {:06}".format(iteration), end='')
-                print(" | training loss {:01.4f} accuracy {:01.2f}".format(loss, accuracy), end='')
-                print(" | evalaution loss {:01.4f} accuracy {:01.2f}".format(loss_eval, accuracy_eval))
+                print(" | training loss {:01.4f} accuracy {:01.3f}".format(loss, accuracy), end='')
+                print(" | evalaution loss {:01.4f} accuracy {:01.3f} wg acc {:01.3f}".format(loss_eval, accuracy_eval, wg_acc))
 
                 cur_left_num = DeepIoT_utilities.gen_cur_prun(sess, hacks__TF_to_run[1])
                 print("  Left Elements: {}".format(cur_left_num))
@@ -414,3 +459,5 @@ if __name__ == "__main__":
                 if cur_comps_ratio < TARGET_COMPRESSION_RATIO and np.mean(dev_accuracy) >= TARGET_COMPRESSED_ACCURACY:
                     bprint("\nTarget Reached!")
                     break
+        ### End compression
+        ##############################################################################
