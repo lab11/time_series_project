@@ -384,8 +384,8 @@ if __name__ == "__main__":
         COMPRESSION_ITERATION_LIMIT = 100_000
         UPDATE_STEP = 500       # How many iterations to run at each threshold step
         START_THRES = 0.0       # Initial τ
-        FINAL_THRES = 0.825     # Final τ
-        THRES_STEP = 33         # 0.825 / 33 -> 0.025
+        FINAL_THRES = 0.950     # Maximum τ (n.b. orig capped at 0.825)
+        THRES_STEP = 0.025      # How much to increase by each iteration τ
 
         TARGET_COMPRESSION_RATIO = 1.0
         TARGET_COMPRESSED_ACCURACY = 99.0
@@ -393,7 +393,7 @@ if __name__ == "__main__":
         # Make sure we're in compression mode
         sess.run(tf.assign(compress_done, 0.0))
 
-        thres_update_count = 0
+        current_threshold = 0.0
 
         for iteration in range(COMPRESSION_ITERATION_LIMIT):
             # select data to train on and test on for this iteration
@@ -419,13 +419,11 @@ if __name__ == "__main__":
             for layer in hacks__TF_to_run[0].keys():
                 sess.run(hacks__TF_to_run[0][layer])
 
-            # This is a silly way of doing this, but I'm paranoid about changing
-            # too much at the moment
-            if iteration % UPDATE_STEP == 0 and thres_update_count <= THRES_STEP:
-                cur_thres = START_THRES + thres_update_count*(FINAL_THRES - START_THRES)/THRES_STEP
-                bprint("Current threshold, τ = {:01.3f}".format(cur_thres))
-                sess.run(tf.assign(prune_threshold, cur_thres))
-                thres_update_count += 1
+            # Push more nodes towards dropping out
+            if iteration % UPDATE_STEP == 0 and current_threshold < FINAL_THRES:
+                current_threshold += THRES_STEP
+                bprint("Current threshold, τ = {:01.3f}".format(current_threshold))
+                sess.run(tf.assign(prune_threshold, current_threshold))
 
             if (iteration < 5) or (iteration % 200 == 199):
                 # Run an evaluation
