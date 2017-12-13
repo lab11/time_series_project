@@ -139,7 +139,7 @@ def generate_training_and_validation (dataset, labelset, nameset, testing_percen
 #Time to build our Trace LSTM
 #test_sess = tf.InteractiveSession()
 
-num_units = 30
+num_units = 80
 num_labels = 11
 learning_rate = .005
 
@@ -150,7 +150,7 @@ correct_labels = tf.placeholder(tf.float32, (None, num_labels))
 
 cell = tf.contrib.rnn.PhasedLSTMCell(num_units=num_units,
                                      period_init_min = 1.0,
-                                     period_init_max = 2500.0) # Set phasers to stun
+                                     period_init_max = 630.0) # Set phasers to stun
 
 outputs, state = tf.nn.dynamic_rnn(cell=cell,
 								 inputs=inputs,
