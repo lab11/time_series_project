@@ -91,9 +91,77 @@ def gen_cross_validation_data(cross_validation_set_count):
 
     return Data, Labels, Names, labelstrs, num_names, cross_validation_indices
 
+def gen_cross_validation_current(cross_validation_set_count):
+    # load and shuffle data
+    data = np.load("../plaid_data/traces_bundle.npy")
+    np.random.seed(RANDOM_SEED)
+    np.random.shuffle(data)
+    Data = data[:, 0:500] # current
+    Labels = data[:,-1]
+    Names = data[:,-2]
+    num_names = np.max(Names) + 1
+
+    # normalize all waveform magnitude to the maximum for that type
+    data_len = len(Data[0])
+    Data /= np.amax(np.absolute(Data)) # normalize all data
+
+    # get label string names and pad spaces to make them equal length
+    labelstrs = np.load("../plaid_data/traces_class_map.npy")
+    max_str_len = max([len(s) for s in labelstrs])
+    for index, label in enumerate(labelstrs):
+        labelstrs[index] = label + ' '*(max_str_len - len(label))
+
+    # quick idiot test
+    if max(Labels)+1 != len(labelstrs):
+        print("Error: Number of classes doesn't match labels input")
+        sys.exit()
+
+    # generate training and validation datasets (already shuffled)
+    cross_validation_indices = generate_cross_validation_sets(Data, Labels, Names, cross_validation_set_count)
+
+    return Data, Labels, Names, labelstrs, num_names, cross_validation_indices
+
+def gen_cross_validation_power(cross_validation_set_count):
+    # load and shuffle data
+    data = np.load("../plaid_data/traces_bundle.npy")
+    np.random.seed(RANDOM_SEED)
+    np.random.shuffle(data)
+    Data = data[:, 0:500]*data[:, 500:-2] # per-sample current*voltage
+    Labels = data[:,-1]
+    Names = data[:,-2]
+    num_names = np.max(Names) + 1
+
+    # normalize all waveform magnitude to the maximum for that type
+    data_len = len(Data[0])
+    Data /= np.amax(np.absolute(Data)) # normalize all data
+
+    # get label string names and pad spaces to make them equal length
+    labelstrs = np.load("../plaid_data/traces_class_map.npy")
+    max_str_len = max([len(s) for s in labelstrs])
+    for index, label in enumerate(labelstrs):
+        labelstrs[index] = label + ' '*(max_str_len - len(label))
+
+    # quick idiot test
+    if max(Labels)+1 != len(labelstrs):
+        print("Error: Number of classes doesn't match labels input")
+        sys.exit()
+
+    # generate training and validation datasets (already shuffled)
+    cross_validation_indices = generate_cross_validation_sets(Data, Labels, Names, cross_validation_set_count)
+
+    return Data, Labels, Names, labelstrs, num_names, cross_validation_indices
+
 def get_input_len():
     # length of data dimension, minus 2 (label and name)
     return np.shape(np.load("../plaid_data/traces_bundle.npy"))[1] - 2
+
+def get_input_current_len():
+    # length of current only, half of normal
+    return int((np.shape(np.load("../plaid_data/traces_bundle.npy"))[1] - 2)/2)
+
+def get_input_power_len():
+    # length of current only, half of normal
+    return int((np.shape(np.load("../plaid_data/traces_bundle.npy"))[1] - 2)/2)
 
 def get_labels_len():
     # number of classes saved
