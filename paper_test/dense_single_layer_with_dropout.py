@@ -395,16 +395,22 @@ if __name__ == "__main__":
         COMPRESSION_ITERATION_LIMIT = 100_000
         UPDATE_STEP = 500       # How many iterations to run at each threshold step
         START_THRES = 0.0       # Initial τ
-        FINAL_THRES = 0.950     # Maximum τ (n.b. orig capped at 0.825)
+        FINAL_THRES = 0.975     # Maximum τ (n.b. orig capped at 0.825)
         THRES_STEP = 0.025      # How much to increase by each iteration τ
 
-        TARGET_COMPRESSION_RATIO = 1.0
-        TARGET_COMPRESSED_ACCURACY = 99.0
+        AFTER_COMPRESSION_MAX_ITERATIONS = UPDATE_STEP*4
+
+        # Compression early-exit conditions:
+        # 1 & 2 or 2 & 3 will exit
+        TARGET_COMPRESSION_RATIO = 1.0      # Set artificially low in favor of unit count
+        TARGET_COMPRESSED_ACCURACY = 85.0   #
+        TARGET_UNIT_COUNT = 25_000          # Count of numbers (weights+biases) that might fit on a node
 
         # Make sure we're in compression mode
         sess.run(tf.assign(compress_done, 0.0))
 
         current_threshold = 0.0
+        threshold_reached_at_iteration = COMPRESSION_ITERATION_LIMIT
 
         for iteration in range(COMPRESSION_ITERATION_LIMIT):
             # select data to train on and test on for this iteration
@@ -431,10 +437,13 @@ if __name__ == "__main__":
                 sess.run(hacks__TF_to_run[0][layer])
 
             # Push more nodes towards dropping out
-            if iteration % UPDATE_STEP == 0 and current_threshold < FINAL_THRES:
-                current_threshold += THRES_STEP
-                bprint("Current threshold, τ = {:01.3f}".format(current_threshold))
-                sess.run(tf.assign(prune_threshold, current_threshold))
+            if iteration % UPDATE_STEP == 0:
+                if current_threshold < FINAL_THRES:
+                    current_threshold += THRES_STEP
+                    bprint("Current threshold, τ = {:01.3f}".format(current_threshold))
+                    sess.run(tf.assign(prune_threshold, current_threshold))
+                elif current_threshold == FINAL_THRES:
+                    threshold_reached_at_iteration = iteration
 
             if (iteration < 5) or (iteration % 200 == 199):
                 # Run an evaluation
@@ -460,14 +469,37 @@ if __name__ == "__main__":
 
                 cur_left_num = DeepIoT_utilities.gen_cur_prun(sess, hacks__TF_to_run[1])
                 print("  Left Elements: {}".format(cur_left_num))
-                cur_comps_ratio = DeepIoT_utilities.compress_ratio(
+                stats = DeepIoT_utilities.compress_stats(
                         cur_left_num, layer_name_to_original_dimensions,
                         n_input, n_labels,
                         )
+                print("  Original Size:", stats['original_size'], end='')
+                print(" Compressed Size:", stats['compressed_size'], end='')
+                print(" Percent:", stats['percent'])
 
-                if cur_comps_ratio < TARGET_COMPRESSION_RATIO and np.mean(accuracy_eval) >= TARGET_COMPRESSED_ACCURACY:
-                    bprint("\nTarget Reached!")
+                if stats['percent'] < TARGET_COMPRESSION_RATIO and accuracy_eval >= TARGET_COMPRESSED_ACCURACY:
+                    bprint("\nCompression and Accuracy Target Reached!")
                     break
+
+                if accuracy_eval >= TARGET_COMPRESSED_ACCURACY and stats['compressed_size'] <= TARGET_UNIT_COUNT:
+                    bprint("\nSize and Accuracy Target Reached!")
+                    break
+
+            if (iteration - threshold_reached_at_iteration) > AFTER_COMPRESSION_MAX_ITERATIONS:
+                bprint("\nPost-compression iteration limited reached")
+                break
+
+
+        print("Final Compressed Model:")
+        cur_left_num = DeepIoT_utilities.gen_cur_prun(sess, hacks__TF_to_run[1])
+        print("  Left Elements: {}".format(cur_left_num))
+        stats = DeepIoT_utilities.compress_stats(
+                cur_left_num, layer_name_to_original_dimensions,
+                n_input, n_labels,
+                )
+        print("  Original Size:", stats['original_size'], end='')
+        print(" Compressed Size:", stats['compressed_size'], end='')
+        print(" Percent:", stats['percent'])
 
         saver.save(sess, filename + '.compressed')
         ### End compression

@@ -59,7 +59,7 @@ def gen_cur_prun(sess, left_num_dict):
 #
 # XXX Not generic, assumes knowledge of how to interperet layer names
 # XXX Fuck it, makin it worse with n_input, n_labels
-def compress_ratio(cur_left_num, org_dim_dict, n_input, n_labels):
+def compress_stats(cur_left_num, org_dim_dict, n_input, n_labels):
     original_size   = 0
     compressed_size = 0
 
@@ -78,9 +78,11 @@ def compress_ratio(cur_left_num, org_dim_dict, n_input, n_labels):
 
     percent = 100*(compressed_size/original_size)
 
-    print("  Original Size:", original_size, "Compressed Size:", compressed_size, "Percent:", percent)
-
-    return percent
+    return {
+            "percent": percent,
+            "original_size": original_size,
+            "compressed_size": compressed_size,
+            }
 
 ##
 ## Utilities End
