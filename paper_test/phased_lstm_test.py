@@ -30,7 +30,7 @@ def gen_data():
     Data = np.reshape(Data, (Data.shape[0], Data.shape[1], 1))
 
     # get label string names and pad spaces to make them equal length
-    labelstrs = np.load("../plaid_data/raw_threshold_numpy_power_traces_class_map.npy")
+    labelstrs = np.load("../plaid_data/raw_threshold_powerblade_power_traces_class_map.npy")
     max_str_len = max([len(s) for s in labelstrs])
     for index, label in enumerate(labelstrs):
         labelstrs[index] = label + ' '*(max_str_len - len(label))
