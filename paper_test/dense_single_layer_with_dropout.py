@@ -316,7 +316,7 @@ if __name__ == "__main__":
 
         ##############################################################################
         ### LOAD OR TRAIN AN INITIAL UNCOMPRESSED MODEL
-        if os.path.exists(filename + '.uncompressed'):
+        if os.path.exists(filename + '.uncompressed.meta'):
             print("Loading pre-trained, uncompressed model")
             saver.restore(sess, filename + '.uncompressed')
             print("Loaded\n")
