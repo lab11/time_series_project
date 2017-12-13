@@ -16,7 +16,7 @@ RANDOM_SEED = 21
 # function to create the training and validation datasets
 def gen_data():
     # load and shuffle data
-    data = np.load("../plaid_data/raw_threshold_numpy_power_traces_bundle.npy")
+    data = np.load("../plaid_data/raw_threshold_powerblade_power_traces_bundle.npy")
     np.random.seed(RANDOM_SEED)
     np.random.shuffle(data)
     Data = data[:, 0:-2]
