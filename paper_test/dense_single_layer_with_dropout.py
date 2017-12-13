@@ -323,8 +323,8 @@ if __name__ == "__main__":
                             )
 
                     print("iteration {:06}".format(iteration), end='')
-                    print(" | training loss {01:.4f} accuracy {01:.2f}".format(loss, accuracy), end='')
-                    print(" | evalaution loss {01:.4f} accuracy {01:.2f}".format(loss_eval, accuracy_eval))
+                    print(" | training loss {:01.4f} accuracy {:01.2f}".format(loss, accuracy), end='')
+                    print(" | evalaution loss {:01.4f} accuracy {:01.2f}".format(loss_eval, accuracy_eval))
             print("Finished initial training.")
             print('='*80)
 
@@ -340,7 +340,7 @@ if __name__ == "__main__":
                     }
                 )
 
-        print(" | evalaution loss {01:.4f} accuracy {01:.2f}".format(loss_eval, accuracy_eval))
+        print(" | evalaution loss {:01.4f} accuracy {:01.2f}".format(loss_eval, accuracy_eval))
 
         bprint("\nStart Compressing")
 
@@ -384,7 +384,7 @@ if __name__ == "__main__":
             # too much at the moment
             if iteration % UPDATE_STEP == 0 and thres_update_count <= THRES_STEP:
                 cur_thres = START_THRES + thres_update_count*(FINAL_THRES - START_THRES)/THRES_STEP
-                bprint("Current threshold, τ = {}".format(cur_thres))
+                bprint("Current threshold, τ = {:01.2f}".format(cur_thres))
                 sess.run(tf.assign(prune_threshold, cur_thres))
                 thres_update_count += 1
 
@@ -398,8 +398,8 @@ if __name__ == "__main__":
                             }
                         )
                 print("iteration {:06}".format(iteration), end='')
-                print(" | training loss {01:.4f} accuracy {01:.2f}".format(loss, accuracy), end='')
-                print(" | evalaution loss {01:.4f} accuracy {01:.2f}".format(loss_eval, accuracy_eval))
+                print(" | training loss {:01.4f} accuracy {:01.2f}".format(loss, accuracy), end='')
+                print(" | evalaution loss {:01.4f} accuracy {:01.2f}".format(loss_eval, accuracy_eval))
 
                 cur_left_num = DeepIoT_utilities.gen_cur_prun(sess, hacks__TF_to_run[1])
                 print("  Left Elements: {}".format(cur_left_num))
