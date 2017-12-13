@@ -387,8 +387,8 @@ if __name__ == "__main__":
         FINAL_THRES = 0.825     # Final τ
         THRES_STEP = 33         # 0.825 / 33 -> 0.025
 
-        TARGET_COMPRESSION_RATIO = 40.0
-        TARGET_COMPRESSED_ACCURACY = 90.0
+        TARGET_COMPRESSION_RATIO = 1.0
+        TARGET_COMPRESSED_ACCURACY = 99.0
 
         # Make sure we're in compression mode
         sess.run(tf.assign(compress_done, 0.0))
@@ -456,7 +456,7 @@ if __name__ == "__main__":
                         n_input, n_labels,
                         )
 
-                if cur_comps_ratio < TARGET_COMPRESSION_RATIO and np.mean(dev_accuracy) >= TARGET_COMPRESSED_ACCURACY:
+                if cur_comps_ratio < TARGET_COMPRESSION_RATIO and np.mean(accuracy_eval) >= TARGET_COMPRESSED_ACCURACY:
                     bprint("\nTarget Reached!")
                     break
         ### End compression
