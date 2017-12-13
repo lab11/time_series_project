@@ -143,8 +143,8 @@ num_units = 30
 num_labels = 11
 learning_rate = .005
 
-data_input = tf.placeholder(tf.float32  , (None, 15000, 1)) # Batch, Raw trace
-time_input = tf.placeholder(tf.float32, (None, 15000, 1))
+data_input = tf.placeholder(tf.float32  , (None, 2520, 1)) # Batch, Raw trace
+time_input = tf.placeholder(tf.float32, (None, 2520, 1))
 inputs = (time_input, data_input)
 correct_labels = tf.placeholder(tf.float32, (None, num_labels)) 
 
