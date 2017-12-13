@@ -398,13 +398,13 @@ if __name__ == "__main__":
         FINAL_THRES = 0.975     # Maximum τ (n.b. orig capped at 0.825)
         THRES_STEP = 0.025      # How much to increase by each iteration τ
 
-        AFTER_COMPRESSION_MAX_ITERATIONS = UPDATE_STEP*4
+        AFTER_COMPRESSION_MAX_ITERATIONS = UPDATE_STEP*3
 
         # Compression early-exit conditions:
         # 1 & 2 or 2 & 3 will exit
         TARGET_COMPRESSION_RATIO = 1.0      # Set artificially low in favor of unit count
         TARGET_COMPRESSED_ACCURACY = 85.0   #
-        TARGET_UNIT_COUNT = 25_000          # Count of numbers (weights+biases) that might fit on a node
+        TARGET_UNIT_COUNT = 5_000           # Count of numbers (weights+biases) that might fit on a node
 
         # Make sure we're in compression mode
         sess.run(tf.assign(compress_done, 0.0))
@@ -443,7 +443,9 @@ if __name__ == "__main__":
                     bprint("Current threshold, τ = {:01.3f}".format(current_threshold))
                     sess.run(tf.assign(prune_threshold, current_threshold))
                 elif current_threshold == FINAL_THRES:
-                    threshold_reached_at_iteration = iteration
+                    if threshold_reached_at_iteration == COMPRESSION_ITERATION_LIMIT:
+                        threshold_reached_at_iteration = iteration
+                        bprint("Max threshold reached at {}".format(threshold_reached_at_iteration))
 
             if (iteration < 5) or (iteration % 200 == 199):
                 # Run an evaluation
