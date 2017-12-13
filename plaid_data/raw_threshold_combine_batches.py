@@ -6,9 +6,9 @@ import os
 from zlib import crc32
 import sys
 
-fnames = glob.glob("raw_threshold_batch/numpy-power-event-*.npy")
+fnames = glob.glob("raw_threshold_batch_powerblade/powerblade-power-event-*.npy")
 
-data = np.zeros((len(fnames), 15000 + 2), dtype=float)
+data = np.zeros((len(fnames), 2520 + 2), dtype=float)
 class_map = []
 name_map = []
 
@@ -41,7 +41,7 @@ for fname in sorted(fnames):
 
 # save big data array
 dirname = "./"
-np.save(dirname + "raw_threshold_numpy_power_traces_bundle", data[0:index+1])
-np.save(dirname + "raw_threshold_numpy_power_traces_class_map", class_map)
-np.save(dirname + "raw_threshold_numpy_power_traces_name_map", name_map)
+np.save(dirname + "raw_threshold_powerblade_power_traces_bundle", data[0:index+1])
+np.save(dirname + "raw_threshold_powerblade_power_traces_class_map", class_map)
+np.save(dirname + "raw_threshold_powerblade_power_traces_name_map", name_map)
 print("Done combining")
