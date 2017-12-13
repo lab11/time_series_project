@@ -442,7 +442,7 @@ if __name__ == "__main__":
                     current_threshold += THRES_STEP
                     bprint("Current threshold, τ = {:01.3f}".format(current_threshold))
                     sess.run(tf.assign(prune_threshold, current_threshold))
-                elif current_threshold == FINAL_THRES:
+                else:
                     if threshold_reached_at_iteration == COMPRESSION_ITERATION_LIMIT:
                         threshold_reached_at_iteration = iteration
                         bprint("Max threshold reached at {}".format(threshold_reached_at_iteration))
