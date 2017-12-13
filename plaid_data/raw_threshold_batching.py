@@ -19,7 +19,7 @@ power-event - instantaneous power
 if not (os.path.exists("PLAID/") and os.path.isdir("PLAID/")):
     print("PLAID not downloaded yet. Run `plaid_serializer.py`")
     sys.exit()
-if not (os.path.exists("numpy_arrays/") and os.path.isdir("PLAID/")):
+if not (os.path.exists("powerblade_arrays/") and os.path.isdir("PLAID/")):
     print("powerblade arrays not created yet. Run `plaid_serializer.py`")
     sys.exit()
 
@@ -27,15 +27,23 @@ if not (os.path.exists("numpy_arrays/") and os.path.isdir("PLAID/")):
 if not os.path.exists('raw_threshold_batch'): #different folder for events
     os.makedirs('raw_threshold_batch')
 
+if not os.path.exists('raw_threshold_batch_powerblade'):
+    os.makedirs('raw_threshold_batch_powerblade')
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--plot", action='store_true', help="Use to generate a buttload of plots")
+parser.add_argument("--powerblade", action='store_true', help="use powerblade arrays")
 
 args = parser.parse_args()
 
 plotter = False
+pBlade = False
 if args.plot:
     print("PLOT SOME SHIT")
     plotter = True
+if args.powerblade: 
+    print("User powerblade data")
+    pBlade = True
 
 # collect metadata
 metadata_filenames = [("PLAID/meta1.json", 'dataset1'), ("PLAID/meta2StatusesRenamed.json", 'dataset2')]
@@ -73,12 +81,21 @@ for datasetname in sorted(metadata.keys()):
         out_filename = 'raw_threshold_batch/' + 'numpy-power-event-' + device_class + '-' + device_state + '-' + device_full_name + '-file' + data_id + '.npy' #added event- to the regular filename
         outplot_clipped = 'raw_threshold_batch_graphs/' + data_id + "-clipped.png"
         outplot = 'raw_threshold_batch_graphs/' + data_id + ".png"
+        if pBlade:
+            data_filename = 'powerblade_arrays/' + data_id + '.npy'
+            out_filename = 'raw_threshold_batch_powerblade/' + 'powerblade-power-event-' + device_class + '-' + device_state + '-' + device_full_name + '-file' + data_id + '.npy' #added event- to the regular filename
+            outplot_clipped = 'raw_threshold_batch_graphs/' + data_id + "-clipped.png"
+            outplot = 'raw_threshold_batch_graphs/' + data_id + ".png"
         # read input file
         data = np.load(data_filename)
 
         # Zero crossing code I stole from neal. Shhhhhhh
         n_cycles = 1
-        frequency = 30000
+        frequency = 2520
+        
+        if not pBlade:
+            frequency = 30000
+
         voltage = data[:,1]
         current = data[:,0]
         period_len = int(frequency / 60)
@@ -120,7 +137,9 @@ for datasetname in sorted(metadata.keys()):
             if device_class not in transition_classes:
                 transition_classes[device_class] = 0
             transition_classes[device_class] += 1
-            end_point = transition_point + 15000 # Grab 0.5 seconds of data
+            end_point = transition_point + 2520 # Grab 0.5 seconds of data
+            if not pBlade: 
+                end_point = transitions_point + 50000
             if end_point >= len(power_data):
                 print("NOOOOOO")
                 print(out_filename)
