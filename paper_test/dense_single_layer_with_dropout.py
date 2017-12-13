@@ -461,3 +461,51 @@ if __name__ == "__main__":
                     break
         ### End compression
         ##############################################################################
+
+
+
+        ##############################################################################
+        ### Run fine-tuning
+        bprint("\n\n\nBegin fine-tuning")
+
+        # Fine-tuning configuration
+        FINE_TUNE_ITERATION_LIMIT = 100_000
+
+        # Internally, this will zero the dropped nodes
+        sess.run(tf.assign(compress_done, 1.0))
+
+        for iteration in range(FINE_TUNE_ITERATION_LIMIT):
+            # select data to train on and test on for this iteration
+            batch_nums = np.random.choice(TrainingData.shape[0], BATCH_SIZE)
+
+            # Train compressed network
+            optimizer, loss, labels, prediction, accuracy = sess.run(training_NN,
+                    feed_dict = {
+                        batch_training_features: TrainingData[batch_nums],
+                        batch_training_labels: OneHotTrainingLabels[batch_nums],
+                        }
+                    )
+
+            if (iteration < 5) or (iteration % 100) == 99:
+                # Run evaluation
+                loss_eval, labels_eval, prediction_eval, pred_scores_eval, accuracy_eval = sess.run(eval_NN,
+                        feed_dict = {
+                            batch_eval_features: ValidationData,
+                            batch_eval_labels: OneHotValidationLabels,
+                            }
+                        )
+
+                wg_acc = group_weighted_accuracy_by_device(
+                        n_classes,
+                        num_names.astype(int),
+                        prediction_eval,
+                        pred_scores_eval,
+                        ValidationNames,
+                        id_to_labels,
+                        )
+
+                print("iteration {:06}".format(iteration), end='')
+                print(" | training loss {:01.4f} accuracy {:01.3f}".format(loss, accuracy), end='')
+                print(" | evalaution loss {:01.4f} accuracy {:01.3f} wg acc {:01.3f}".format(loss_eval, accuracy_eval, wg_acc))
+        ### End fine-tuning
+        ##############################################################################
