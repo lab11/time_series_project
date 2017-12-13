@@ -842,9 +842,6 @@ def train_cycle_nn(graph, tf_input, tf_expected, optimizer, dropout_prob, evalua
                         saver.save(sess, checkpoint_string_name)
 
                     # training accuracy
-                    print("SHAPE")
-                    print(TrainingData[training_nums].shape)
-                    print(len(training_nums))
                     training_loss, training_accuracy, training_preds, training_pred_scores, training_pred_scores_full, training_correct_preds = sess.run(evaluation_args, feed_dict={tf_input: TrainingData[training_nums], tf_expected: OneHotTrainingLabels[training_nums]})
 
                     training_grouped_accuracy = group_accuracy_by_device(len(labelstrs), num_names.astype(int), training_preds, TrainingNames, id_to_labels)
