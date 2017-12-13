@@ -172,11 +172,11 @@ def build_nn(BatchedTrainingData, BatchedTrainingLabels, BatchedEvalData, Batche
     discOptimizer = train_op # alais to DeepIoT name for sanity
 
     # Compute model accuracy
-    predictions = tf.argmax(prediction_train, 1)
-    pred_scores = tf.reduce_max(prediction_train,1)
-    pred_scores_full = prediction_train
-    correct_pred = tf.equal(predictions, tf.argmax(BatchedTrainingLabels, 1)) # check the index with the largest value
-    accuracy_train = tf.reduce_mean(tf.cast(correct_pred, tf.float64)) # percentage of traces that were correct
+    predictions_train = tf.argmax(prediction_train, 1)
+    #pred_scores = tf.reduce_max(prediction_train,1)
+    #pred_scores_full = prediction_train
+    correct_pred_train = tf.equal(predictions_train, tf.argmax(BatchedTrainingLabels, 1)) # check the index with the largest value
+    accuracy_train = tf.reduce_mean(tf.cast(correct_pred_train, tf.float64)) # percentage of traces that were correct
 
     train_TF_ops = (discOptimizer, loss_train, BatchedTrainingLabels, prediction_train, accuracy_train)
 
@@ -191,8 +191,11 @@ def build_nn(BatchedTrainingData, BatchedTrainingLabels, BatchedEvalData, Batche
     loss_eval = tf.reduce_mean(
             tf.nn.softmax_cross_entropy_with_logits(
                 logits=logits_eval, labels=BatchedEvalLabels))
+    predictions_eval = tf.argmax(prediction_eval, 1)
+    correct_pred_eval = tf.equal(predictions_eval, tf.argmax(BatchedEvalLabels, 1))
+    accuracy_eval = tf.reduce_mean(tf.cast(correct_pred_eval, tf.float64))
 
-    eval_TF_ops = (loss_eval, BatchedEvalLabels, prediction_eval)
+    eval_TF_ops = (loss_eval, BatchedEvalLabels, prediction_eval, accuracy_eval)
 
 
     #####################
@@ -312,7 +315,7 @@ if __name__ == "__main__":
                     batch_nums_eval = np.random.choice(ValidationData.shape[0], BATCH_SIZE)
 
                     # Run evaluation
-                    loss_eval, labels_eval, prediction_eval = sess.run(eval_NN,
+                    loss_eval, labels_eval, prediction_eval, accuracy_eval = sess.run(eval_NN,
                             feed_dict = {
                                 batch_eval_features: ValidationData[batch_nums_eval],
                                 batch_eval_labels: OneHotValidationLabels[batch_nums_eval],
@@ -320,8 +323,8 @@ if __name__ == "__main__":
                             )
 
                     print("iteration {:06}".format(iteration), end='')
-                    print(" | training loss {} accuracy {}".format(loss, accuracy), end='')
-                    print(" | evalaution loss {}".format(loss_eval))
+                    print(" | training loss {01:.4f} accuracy {01:.2f}".format(loss, accuracy), end='')
+                    print(" | evalaution loss {01:.4f} accuracy {01:.2f}".format(loss_eval, accuracy_eval))
             print("Finished initial training.")
             print('='*80)
 
@@ -330,14 +333,14 @@ if __name__ == "__main__":
         print("\nRunning loaded model on evaluation data once first:")
         # Run evaluation
         batch_nums_eval = np.random.choice(ValidationData.shape[0], BATCH_SIZE)
-        loss_eval, labels_eval, prediction_eval = sess.run(eval_NN,
+        loss_eval, labels_eval, prediction_eval, accuracy_eval = sess.run(eval_NN,
                 feed_dict = {
                     batch_eval_features: ValidationData[batch_nums_eval],
                     batch_eval_labels: OneHotValidationLabels[batch_nums_eval],
                     }
                 )
 
-        print(" | evalaution loss {}".format(loss_eval))
+        print(" | evalaution loss {01:.4f} accuracy {01:.2f}".format(loss_eval, accuracy_eval))
 
         bprint("\nStart Compressing")
 
@@ -388,15 +391,15 @@ if __name__ == "__main__":
             if (iteration < 5) or (iteration % 200 == 199):
                 # Run an evaluation
                 batch_nums_eval = np.random.choice(ValidationData.shape[0], BATCH_SIZE)
-                loss_eval, labels_eval, prediction_eval = sess.run(eval_NN,
+                loss_eval, labels_eval, prediction_eval, accuracy_eval = sess.run(eval_NN,
                         feed_dict = {
                             batch_eval_features: ValidationData[batch_nums_eval],
                             batch_eval_labels: OneHotValidationLabels[batch_nums_eval],
                             }
                         )
                 print("iteration {:06}".format(iteration), end='')
-                print(" | training loss {} accuracy {}".format(loss, accuracy), end='')
-                print(" | evalaution loss {}".format(loss_eval))
+                print(" | training loss {01:.4f} accuracy {01:.2f}".format(loss, accuracy), end='')
+                print(" | evalaution loss {01:.4f} accuracy {01:.2f}".format(loss_eval, accuracy_eval))
 
                 cur_left_num = DeepIoT_utilities.gen_cur_prun(sess, hacks__TF_to_run[1])
                 print("  Left Elements: {}".format(cur_left_num))
