@@ -135,7 +135,7 @@ def build_nn(BatchedTrainingData, BatchedTrainingLabels, BatchedEvalData, Batche
                     DeepIoT_utilities.dropout_prune(
                         dropout_probabilities_fc1, prune_threshold, compress_done),
                     is_training=is_training,
-                    noise_shape=(1,330),
+                    noise_shape=(1,n_hidden),
                     # noise_shape, seed??
                     name='fc1_dropout',
                     )
