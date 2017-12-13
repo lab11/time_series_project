@@ -971,7 +971,7 @@ def train_phased_cycle_nn(graph, tf_input, tf_expected, tf_times, optimizer, dro
 
                 # select data to train on and test on for this iteration
                 batch_nums = np.random.choice(TrainingData.shape[0], batch_size, p=TrainingData_probabilities)
-                print("Run training step " + str(step))
+
                 # run training
                 if(dropout_prob is not None):
                     sess.run(optimizer, feed_dict = {tf_input: TrainingData[batch_nums], tf_expected: OneHotTrainingLabels[batch_nums], dropout_prob: dropout, tf_times: TrainingTimes[batch_nums]})
@@ -987,9 +987,6 @@ def train_phased_cycle_nn(graph, tf_input, tf_expected, tf_times, optimizer, dro
                         saver.save(sess, checkpoint_string_name)
 
                     # training accuracy
-                    print("SHAPE")
-                    print(TrainingData[training_nums].shape)
-                    print(len(training_nums))
                     training_loss, training_accuracy, training_preds, training_pred_scores, training_pred_scores_full, training_correct_preds = sess.run(evaluation_args, feed_dict={tf_input: TrainingData[training_nums], tf_expected: OneHotTrainingLabels[training_nums], tf_times: TrainingTimes[training_nums]})
 
                     training_grouped_accuracy = group_accuracy_by_device(len(labelstrs), num_names.astype(int), training_preds, TrainingNames, id_to_labels)
