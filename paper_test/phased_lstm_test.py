@@ -44,7 +44,7 @@ def gen_data():
     TrainingData, TrainingLabels, TrainingNames, ValidationData, ValidationLabels, ValidationNames = generate_training_and_validation(Data, Labels, Names, 0.20)
 
     print(TrainingData.shape)
-    time_trace = range(15000)
+    time_trace = range(2520)
     time_trace = [float(i) for i in time_trace]
     TrainTimeTraces = []
     for i in range(TrainingData.shape[0]):
