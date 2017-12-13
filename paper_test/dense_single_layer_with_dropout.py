@@ -27,9 +27,9 @@ try:
     from termcolor import cprint
     bprint = lambda x: cprint(x, attrs=['bold'])
 except ImportError:
-    bprint = lambda x: bprint(x)
+    bprint = lambda x: print(x)
 
-from plaid_data_setup import get_input_len, get_labels_len, train_cycle_nn, gen_data, group_weighted_accuracy_by_device
+from plaid_data_setup import get_input_len, get_labels_len, train_cycle_nn, gen_cross_validation_data, group_weighted_accuracy_by_device
 
 import DeepIoT_compressor
 import DeepIoT_dropOut
@@ -37,7 +37,7 @@ import DeepIoT_utilities
 
 # Config:
 n_training_iter  = 150_000
-n_hidden         = 30*11
+n_hidden         = 100
 n_input          = get_input_len()
 n_labels         = get_labels_len()
 learning_rate    = 0.001
@@ -244,90 +244,195 @@ def build_nn(BatchedTrainingData, BatchedTrainingLabels, BatchedEvalData, Batche
     return train_TF_ops, eval_TF_ops, compressor_TF_ops, hacks
 
 if __name__ == "__main__":
-    # train the neural network on test data
-    #graph, X, Y, optimizer, dropout_prob, evaluation_args = build_nn()
-    #train_cycle_nn(graph, X, Y, optimizer, dropout_prob, evaluation_args, gen_data())
 
-    # Get data
+    # create dataset
+    cross_validation_set_count = 10
     print("Loading data...")
-    TrainingData, ValidationData, TrainingLabels, ValidationLabels,\
-            TrainingNames, ValidationNames, labelstrs, num_names = gen_data()
+    Data, Labels, Names, labelstrs, num_names, cross_validation_indices = gen_cross_validation_data(cross_validation_set_count)
 
-    # convert Labels from integers to one-hot array
-    n_classes = len(labelstrs)
-    OneHotTrainingLabels = np.eye(n_classes)[TrainingLabels.astype(np.int64)]
-    OneHotValidationLabels = np.eye(n_classes)[ValidationLabels.astype(np.int64)]
+    # run cross validation
+    results = [[] for index in range(cross_validation_set_count)]
+    for cross_validation_index in range(cross_validation_set_count):
+        print("Cross validation step " + str(cross_validation_index))
 
-    # Other magic computation from plaid data
-    id_to_labels = np.zeros(num_names.astype(int))
-    for i in range(0, num_names.astype(int)):
-        index = np.where(TrainingNames == i)
-        if(len(index[0]) > 0):
-            id_to_labels[i] = TrainingLabels[index[0][0]]
+        # select cross validation set
+        training_indices, validation_indices = select_cross_validation_set(cross_validation_indices, cross_validation_index)
+        TrainingData = Data[training_indices]
+        TrainingLabels = Labels[training_indices]
+        TrainingNames = Names[training_indices]
+        ValidationData = Data[validation_indices]
+        ValidationLabels = Labels[validation_indices]
+        ValidationNames = Names[validation_indices]
 
-    for i in range(0, num_names.astype(int)):
-        index = np.where(ValidationNames == i)
-        if(len(index[0]) > 0):
-            id_to_labels[i] = ValidationLabels[index[0][0]]
+        # Get data
+        #print("Loading data...")
+        #TrainingData, ValidationData, TrainingLabels, ValidationLabels,\
+        #        TrainingNames, ValidationNames, labelstrs, num_names = gen_data()
 
-    ### # Create Batches
-    ### print("Creating batches...")
-    ### # Minimum number elements in the queue after a dequeue, used to ensure a level of mixing of elements.
-    ### min_after_dequeue = 1000
-    ### # capacity: An integer. The maximum number of elements in the queue.
-    ### capacity = min_after_dequeue + 3 * BATCH_SIZE
-    ### batch_training_features, batch_training_labels = tf.train.shuffle_batch(
-    ###         [TrainingData, OneHotTrainingLabels], batch_size=BATCH_SIZE,
-    ###         num_threads=16, capacity=capacity, min_after_dequeue=min_after_dequeue)
-    ### batch_eval_features, batch_eval_labels = tf.train.shuffle_batch(
-    ###         [ValidationData, OneHotValidationLabels], batch_size=BATCH_SIZE,
-    ###         num_threads=16, capacity=capacity, min_after_dequeue=min_after_dequeue)
+        # convert Labels from integers to one-hot array
+        n_classes = len(labelstrs)
+        OneHotTrainingLabels = np.eye(n_classes)[TrainingLabels.astype(np.int64)]
+        OneHotValidationLabels = np.eye(n_classes)[ValidationLabels.astype(np.int64)]
 
-    # Create Batches
-    print("Creating batches...")
-    batch_training_features = tf.placeholder("float64", [None, n_input])
-    batch_training_labels = tf.placeholder("float64", [None, n_labels])
-    batch_eval_features = tf.placeholder("float64", [None, n_input])
-    batch_eval_labels = tf.placeholder("float64", [None, n_labels])
+        # Other magic computation from plaid data
+        id_to_labels = np.zeros(num_names.astype(int))
+        for i in range(0, num_names.astype(int)):
+            index = np.where(TrainingNames == i)
+            if(len(index[0]) > 0):
+                id_to_labels[i] = TrainingLabels[index[0][0]]
 
-    # Create NN's
-    print("Creating NN's...")
-    training_NN, eval_NN, compressor_NN, hacks__TF_to_run = build_nn(
-            BatchedTrainingData=batch_training_features, BatchedTrainingLabels=batch_training_labels,
-            BatchedEvalData=batch_eval_features, BatchedEvalLabels=batch_eval_labels,
-            )
+        for i in range(0, num_names.astype(int)):
+            index = np.where(ValidationNames == i)
+            if(len(index[0]) > 0):
+                id_to_labels[i] = ValidationLabels[index[0][0]]
 
-    print("Creating TF session...")
-    with tf.Session() as sess:
-        tf.global_variables_initializer().run()
-        saver = tf.train.Saver()
-        coord = tf.train.Coordinator()
+        ### # Create Batches
+        ### print("Creating batches...")
+        ### # Minimum number elements in the queue after a dequeue, used to ensure a level of mixing of elements.
+        ### min_after_dequeue = 1000
+        ### # capacity: An integer. The maximum number of elements in the queue.
+        ### capacity = min_after_dequeue + 3 * BATCH_SIZE
+        ### batch_training_features, batch_training_labels = tf.train.shuffle_batch(
+        ###         [TrainingData, OneHotTrainingLabels], batch_size=BATCH_SIZE,
+        ###         num_threads=16, capacity=capacity, min_after_dequeue=min_after_dequeue)
+        ### batch_eval_features, batch_eval_labels = tf.train.shuffle_batch(
+        ###         [ValidationData, OneHotValidationLabels], batch_size=BATCH_SIZE,
+        ###         num_threads=16, capacity=capacity, min_after_dequeue=min_after_dequeue)
+
+        # Create Batches
+        print("Creating batches...")
+        batch_training_features = tf.placeholder("float64", [None, n_input])
+        batch_training_labels = tf.placeholder("float64", [None, n_labels])
+        batch_eval_features = tf.placeholder("float64", [None, n_input])
+        batch_eval_labels = tf.placeholder("float64", [None, n_labels])
+
+        # Create NN's
+        print("Creating NN's...")
+        training_NN, eval_NN, compressor_NN, hacks__TF_to_run = build_nn(
+                BatchedTrainingData=batch_training_features, BatchedTrainingLabels=batch_training_labels,
+                BatchedEvalData=batch_eval_features, BatchedEvalLabels=batch_eval_labels,
+                )
+
+        print("Creating TF session...")
+        with tf.Session() as sess:
+            tf.global_variables_initializer().run()
+            saver = tf.train.Saver()
+            coord = tf.train.Coordinator()
 
 
-        CACHE_PATH = 'DeepIoT-cache'
-        # Create a unique filename for given input parameters to intelligently
-        # train or use an uncompressed model as appropriate
-        filename = 'uncompressed_{}-iter_{}-hidden_{}-input_{}-labels'.format(
-                n_training_iter, n_hidden, n_input, n_labels)
-        filename = os.path.join(CACHE_PATH, filename)
-        bprint(filename)
-        print()
+            CACHE_PATH = 'DeepIoT-cache'
+            # Create a unique filename for given input parameters to intelligently
+            # train or use an uncompressed model as appropriate
+            filename = 'uncompressed_{}-iter_{}-hidden_{}-input_{}-labels'.format(
+                    n_training_iter, n_hidden, n_input, n_labels)
+            filename = os.path.join(CACHE_PATH, filename)
+            bprint(filename)
+            print()
 
 
-        ##############################################################################
-        ### LOAD OR TRAIN AN INITIAL UNCOMPRESSED MODEL
-        if os.path.exists(filename + '.uncompressed.meta'):
-            print("Loading pre-trained, uncompressed model")
-            saver.restore(sess, filename + '.uncompressed')
-            print("Loaded\n")
-        else:
-            print('='*80)
-            print("Training initial model (no dropout)")
-            for iteration in range(n_training_iter):
+            ##############################################################################
+            ### LOAD OR TRAIN AN INITIAL UNCOMPRESSED MODEL
+            if os.path.exists(filename + '.uncompressed.meta'):
+                print("Loading pre-trained, uncompressed model")
+                saver.restore(sess, filename + '.uncompressed')
+                print("Loaded\n")
+            else:
+                print('='*80)
+                print("Training initial model (no dropout)")
+                for iteration in range(n_training_iter):
+                    # select data to train on and test on for this iteration
+                    batch_nums = np.random.choice(TrainingData.shape[0], BATCH_SIZE)
+
+                    # Run training
+                    optimizer, loss, labels, prediction, accuracy = sess.run(training_NN,
+                            feed_dict = {
+                                batch_training_features: TrainingData[batch_nums],
+                                batch_training_labels: OneHotTrainingLabels[batch_nums],
+                                }
+                            )
+
+                    if (iteration < 5) or (iteration % 999) == 0:
+                        # Run evaluation
+                        loss_eval, labels_eval, prediction_eval, pred_scores_eval, accuracy_eval = sess.run(eval_NN,
+                                feed_dict = {
+                                    batch_eval_features: ValidationData,
+                                    batch_eval_labels: OneHotValidationLabels,
+                                    }
+                                )
+
+                        wg_acc = group_weighted_accuracy_by_device(
+                                n_classes,
+                                num_names.astype(int),
+                                prediction_eval,
+                                pred_scores_eval,
+                                ValidationNames,
+                                id_to_labels,
+                                )
+
+                        print("iteration {:06}".format(iteration), end='')
+                        print(" | training loss {:01.4f} accuracy {:01.3f}".format(loss, accuracy), end='')
+                        print(" | evalaution loss {:01.4f} accuracy {:01.3f} wg acc {:01.3f}".format(loss_eval, accuracy_eval, wg_acc))
+                print("Finished initial training.")
+                print('='*80)
+
+                saver.save(sess, filename + '.uncompressed')
+            ## END TRAIN UNCOMPRESSED
+            ##############################################################################
+
+            print("\nRunning loaded model on evaluation data once first:")
+            # Run evaluation
+            loss_eval, labels_eval, prediction_eval, pred_scores_eval, accuracy_eval = sess.run(eval_NN,
+                    feed_dict = {
+                        batch_eval_features: ValidationData,
+                        batch_eval_labels: OneHotValidationLabels,
+                        }
+                    )
+
+            wg_acc = group_weighted_accuracy_by_device(
+                    n_classes,
+                    num_names.astype(int),
+                    prediction_eval,
+                    pred_scores_eval,
+                    ValidationNames,
+                    id_to_labels,
+                    )
+
+            print(" | evalaution loss {:01.4f} accuracy {:01.3f} wg acc {:01.3f}".format(loss_eval, accuracy_eval, wg_acc))
+
+
+
+
+            ##############################################################################
+            ### Run compression
+            bprint("\nStart Compressing")
+            bprint(filename)
+
+            # Compression configuration
+            COMPRESSION_ITERATION_LIMIT = 100_000
+            UPDATE_STEP = 500       # How many iterations to run at each threshold step
+            START_THRES = 0.0       # Initial τ
+            FINAL_THRES = 0.975     # Maximum τ (n.b. orig capped at 0.825)
+            THRES_STEP = 0.025      # How much to increase by each iteration τ
+
+            AFTER_COMPRESSION_MAX_ITERATIONS = UPDATE_STEP*3
+
+            # Compression early-exit conditions:
+            # 1 & 2 or 2 & 3 will exit
+            TARGET_COMPRESSION_RATIO = 1.0      # Set artificially low in favor of unit count
+            TARGET_COMPRESSED_ACCURACY = 85.0   #
+            TARGET_UNIT_COUNT = 5_000           # Count of numbers (weights+biases) that might fit on a node
+
+            # Make sure we're in compression mode
+            sess.run(tf.assign(compress_done, 0.0))
+
+            current_threshold = 0.0
+            threshold_reached_at_iteration = COMPRESSION_ITERATION_LIMIT
+
+            for iteration in range(COMPRESSION_ITERATION_LIMIT):
                 # select data to train on and test on for this iteration
                 batch_nums = np.random.choice(TrainingData.shape[0], BATCH_SIZE)
 
-                # Run training
+                # Train critic
                 optimizer, loss, labels, prediction, accuracy = sess.run(training_NN,
                         feed_dict = {
                             batch_training_features: TrainingData[batch_nums],
@@ -335,7 +440,118 @@ if __name__ == "__main__":
                             }
                         )
 
-                if (iteration < 5) or (iteration % 999) == 0:
+                # Train compressor
+                compressor_optimizer, compressor_loss,\
+                        ema_operator, loss_mean, loss_std = sess.run(compressor_NN,
+                                feed_dict = {
+                                    batch_training_features: TrainingData[batch_nums],
+                                    batch_training_labels: OneHotTrainingLabels[batch_nums],
+                                    }
+                                )
+                # This is a bit of a hack from their arch that's persisted
+                for layer in hacks__TF_to_run[0].keys():
+                    sess.run(hacks__TF_to_run[0][layer])
+
+                # Push more nodes towards dropping out
+                if iteration % UPDATE_STEP == 0:
+                    if current_threshold < FINAL_THRES:
+                        current_threshold += THRES_STEP
+                        bprint("Current threshold, τ = {:01.3f}".format(current_threshold))
+                        sess.run(tf.assign(prune_threshold, current_threshold))
+                    else:
+                        if threshold_reached_at_iteration == COMPRESSION_ITERATION_LIMIT:
+                            threshold_reached_at_iteration = iteration
+                            bprint("Max threshold reached at {}".format(threshold_reached_at_iteration))
+
+                if (iteration < 5) or (iteration % 200 == 199):
+                    # Run an evaluation
+                    loss_eval, labels_eval, prediction_eval, pred_scores_eval, accuracy_eval = sess.run(eval_NN,
+                            feed_dict = {
+                                batch_eval_features: ValidationData,
+                                batch_eval_labels: OneHotValidationLabels,
+                                }
+                            )
+
+                    wg_acc = group_weighted_accuracy_by_device(
+                            n_classes,
+                            num_names.astype(int),
+                            prediction_eval,
+                            pred_scores_eval,
+                            ValidationNames,
+                            id_to_labels,
+                            )
+
+                    print("iteration {:06}".format(iteration), end='')
+                    print(" | training loss {:01.4f} accuracy {:01.3f}".format(loss, accuracy), end='')
+                    print(" | evalaution loss {:01.4f} accuracy {:01.3f} wg acc {:01.3f}".format(loss_eval, accuracy_eval, wg_acc))
+
+                    cur_left_num = DeepIoT_utilities.gen_cur_prun(sess, hacks__TF_to_run[1])
+                    print("  Left Elements: {}".format(cur_left_num))
+                    stats = DeepIoT_utilities.compress_stats(
+                            cur_left_num, layer_name_to_original_dimensions,
+                            n_input, n_labels,
+                            )
+                    print("  Original Size:", stats['original_size'], end='')
+                    print(" Compressed Size:", stats['compressed_size'], end='')
+                    print(" Percent:", stats['percent'])
+
+                    if stats['percent'] < TARGET_COMPRESSION_RATIO and accuracy_eval >= TARGET_COMPRESSED_ACCURACY:
+                        bprint("\nCompression and Accuracy Target Reached!")
+                        break
+
+                    if accuracy_eval >= TARGET_COMPRESSED_ACCURACY and stats['compressed_size'] <= TARGET_UNIT_COUNT:
+                        bprint("\nSize and Accuracy Target Reached!")
+                        break
+
+                if (iteration - threshold_reached_at_iteration) > AFTER_COMPRESSION_MAX_ITERATIONS:
+                    bprint("\nPost-compression iteration limited reached")
+                    break
+
+
+            print("Final Compressed Model:")
+            cur_left_num = DeepIoT_utilities.gen_cur_prun(sess, hacks__TF_to_run[1])
+            print("  Left Elements: {}".format(cur_left_num))
+            stats = DeepIoT_utilities.compress_stats(
+                    cur_left_num, layer_name_to_original_dimensions,
+                    n_input, n_labels,
+                    )
+            print("  Original Size:", stats['original_size'], end='')
+            print(" Compressed Size:", stats['compressed_size'], end='')
+            print(" Percent:", stats['percent'])
+            results[cross_validation_index].append(stats['original_size'])
+            results[cross_validation_index].append(stats['compressed_size'])
+
+            saver.save(sess, filename + '.compressed')
+            ### End compression
+            ##############################################################################
+
+
+
+            ##############################################################################
+            ### Run fine-tuning
+            bprint("\n\n\nBegin fine-tuning")
+            bprint(filename)
+
+            # Fine-tuning configuration
+            FINE_TUNE_ITERATION_LIMIT = 100_000
+
+            # Internally, this will zero the dropped nodes
+            sess.run(tf.assign(compress_done, 1.0))
+
+            wg_acc = 0
+            for iteration in range(FINE_TUNE_ITERATION_LIMIT):
+                # select data to train on and test on for this iteration
+                batch_nums = np.random.choice(TrainingData.shape[0], BATCH_SIZE)
+
+                # Train compressed network
+                optimizer, loss, labels, prediction, accuracy = sess.run(training_NN,
+                        feed_dict = {
+                            batch_training_features: TrainingData[batch_nums],
+                            batch_training_labels: OneHotTrainingLabels[batch_nums],
+                            }
+                        )
+
+                if (iteration < 5) or (iteration % 100) == 99:
                     # Run evaluation
                     loss_eval, labels_eval, prediction_eval, pred_scores_eval, accuracy_eval = sess.run(eval_NN,
                             feed_dict = {
@@ -356,208 +572,18 @@ if __name__ == "__main__":
                     print("iteration {:06}".format(iteration), end='')
                     print(" | training loss {:01.4f} accuracy {:01.3f}".format(loss, accuracy), end='')
                     print(" | evalaution loss {:01.4f} accuracy {:01.3f} wg acc {:01.3f}".format(loss_eval, accuracy_eval, wg_acc))
-            print("Finished initial training.")
-            print('='*80)
+            results[cross_validation_index].append(wg_acc)
 
-            saver.save(sess, filename + '.uncompressed')
-        ## END TRAIN UNCOMPRESSED
-        ##############################################################################
+            saver.save(sess, filename + '.tuned')
+            ### End fine-tuning
+            ##############################################################################
 
-        print("\nRunning loaded model on evaluation data once first:")
-        # Run evaluation
-        loss_eval, labels_eval, prediction_eval, pred_scores_eval, accuracy_eval = sess.run(eval_NN,
-                feed_dict = {
-                    batch_eval_features: ValidationData,
-                    batch_eval_labels: OneHotValidationLabels,
-                    }
-                )
+            bprint("\n\n\nDone")
+            bprint(filename)
+            print(results)
 
-        wg_acc = group_weighted_accuracy_by_device(
-                n_classes,
-                num_names.astype(int),
-                prediction_eval,
-                pred_scores_eval,
-                ValidationNames,
-                id_to_labels,
-                )
+    print()
+    print("Results:", results)
+    print("Accuracies:", results[:, 2])
+    print("Average accuracy=", np.mean(results[:, 2]))
 
-        print(" | evalaution loss {:01.4f} accuracy {:01.3f} wg acc {:01.3f}".format(loss_eval, accuracy_eval, wg_acc))
-
-
-
-
-        ##############################################################################
-        ### Run compression
-        bprint("\nStart Compressing")
-        bprint(filename)
-
-        # Compression configuration
-        COMPRESSION_ITERATION_LIMIT = 100_000
-        UPDATE_STEP = 500       # How many iterations to run at each threshold step
-        START_THRES = 0.0       # Initial τ
-        FINAL_THRES = 0.975     # Maximum τ (n.b. orig capped at 0.825)
-        THRES_STEP = 0.025      # How much to increase by each iteration τ
-
-        AFTER_COMPRESSION_MAX_ITERATIONS = UPDATE_STEP*3
-
-        # Compression early-exit conditions:
-        # 1 & 2 or 2 & 3 will exit
-        TARGET_COMPRESSION_RATIO = 1.0      # Set artificially low in favor of unit count
-        TARGET_COMPRESSED_ACCURACY = 85.0   #
-        TARGET_UNIT_COUNT = 5_000           # Count of numbers (weights+biases) that might fit on a node
-
-        # Make sure we're in compression mode
-        sess.run(tf.assign(compress_done, 0.0))
-
-        current_threshold = 0.0
-        threshold_reached_at_iteration = COMPRESSION_ITERATION_LIMIT
-
-        for iteration in range(COMPRESSION_ITERATION_LIMIT):
-            # select data to train on and test on for this iteration
-            batch_nums = np.random.choice(TrainingData.shape[0], BATCH_SIZE)
-
-            # Train critic
-            optimizer, loss, labels, prediction, accuracy = sess.run(training_NN,
-                    feed_dict = {
-                        batch_training_features: TrainingData[batch_nums],
-                        batch_training_labels: OneHotTrainingLabels[batch_nums],
-                        }
-                    )
-
-            # Train compressor
-            compressor_optimizer, compressor_loss,\
-                    ema_operator, loss_mean, loss_std = sess.run(compressor_NN,
-                            feed_dict = {
-                                batch_training_features: TrainingData[batch_nums],
-                                batch_training_labels: OneHotTrainingLabels[batch_nums],
-                                }
-                            )
-            # This is a bit of a hack from their arch that's persisted
-            for layer in hacks__TF_to_run[0].keys():
-                sess.run(hacks__TF_to_run[0][layer])
-
-            # Push more nodes towards dropping out
-            if iteration % UPDATE_STEP == 0:
-                if current_threshold < FINAL_THRES:
-                    current_threshold += THRES_STEP
-                    bprint("Current threshold, τ = {:01.3f}".format(current_threshold))
-                    sess.run(tf.assign(prune_threshold, current_threshold))
-                else:
-                    if threshold_reached_at_iteration == COMPRESSION_ITERATION_LIMIT:
-                        threshold_reached_at_iteration = iteration
-                        bprint("Max threshold reached at {}".format(threshold_reached_at_iteration))
-
-            if (iteration < 5) or (iteration % 200 == 199):
-                # Run an evaluation
-                loss_eval, labels_eval, prediction_eval, pred_scores_eval, accuracy_eval = sess.run(eval_NN,
-                        feed_dict = {
-                            batch_eval_features: ValidationData,
-                            batch_eval_labels: OneHotValidationLabels,
-                            }
-                        )
-
-                wg_acc = group_weighted_accuracy_by_device(
-                        n_classes,
-                        num_names.astype(int),
-                        prediction_eval,
-                        pred_scores_eval,
-                        ValidationNames,
-                        id_to_labels,
-                        )
-
-                print("iteration {:06}".format(iteration), end='')
-                print(" | training loss {:01.4f} accuracy {:01.3f}".format(loss, accuracy), end='')
-                print(" | evalaution loss {:01.4f} accuracy {:01.3f} wg acc {:01.3f}".format(loss_eval, accuracy_eval, wg_acc))
-
-                cur_left_num = DeepIoT_utilities.gen_cur_prun(sess, hacks__TF_to_run[1])
-                print("  Left Elements: {}".format(cur_left_num))
-                stats = DeepIoT_utilities.compress_stats(
-                        cur_left_num, layer_name_to_original_dimensions,
-                        n_input, n_labels,
-                        )
-                print("  Original Size:", stats['original_size'], end='')
-                print(" Compressed Size:", stats['compressed_size'], end='')
-                print(" Percent:", stats['percent'])
-
-                if stats['percent'] < TARGET_COMPRESSION_RATIO and accuracy_eval >= TARGET_COMPRESSED_ACCURACY:
-                    bprint("\nCompression and Accuracy Target Reached!")
-                    break
-
-                if accuracy_eval >= TARGET_COMPRESSED_ACCURACY and stats['compressed_size'] <= TARGET_UNIT_COUNT:
-                    bprint("\nSize and Accuracy Target Reached!")
-                    break
-
-            if (iteration - threshold_reached_at_iteration) > AFTER_COMPRESSION_MAX_ITERATIONS:
-                bprint("\nPost-compression iteration limited reached")
-                break
-
-
-        print("Final Compressed Model:")
-        cur_left_num = DeepIoT_utilities.gen_cur_prun(sess, hacks__TF_to_run[1])
-        print("  Left Elements: {}".format(cur_left_num))
-        stats = DeepIoT_utilities.compress_stats(
-                cur_left_num, layer_name_to_original_dimensions,
-                n_input, n_labels,
-                )
-        print("  Original Size:", stats['original_size'], end='')
-        print(" Compressed Size:", stats['compressed_size'], end='')
-        print(" Percent:", stats['percent'])
-
-        saver.save(sess, filename + '.compressed')
-        ### End compression
-        ##############################################################################
-
-
-
-        ##############################################################################
-        ### Run fine-tuning
-        bprint("\n\n\nBegin fine-tuning")
-        bprint(filename)
-
-        # Fine-tuning configuration
-        FINE_TUNE_ITERATION_LIMIT = 100_000
-
-        # Internally, this will zero the dropped nodes
-        sess.run(tf.assign(compress_done, 1.0))
-
-        for iteration in range(FINE_TUNE_ITERATION_LIMIT):
-            # select data to train on and test on for this iteration
-            batch_nums = np.random.choice(TrainingData.shape[0], BATCH_SIZE)
-
-            # Train compressed network
-            optimizer, loss, labels, prediction, accuracy = sess.run(training_NN,
-                    feed_dict = {
-                        batch_training_features: TrainingData[batch_nums],
-                        batch_training_labels: OneHotTrainingLabels[batch_nums],
-                        }
-                    )
-
-            if (iteration < 5) or (iteration % 100) == 99:
-                # Run evaluation
-                loss_eval, labels_eval, prediction_eval, pred_scores_eval, accuracy_eval = sess.run(eval_NN,
-                        feed_dict = {
-                            batch_eval_features: ValidationData,
-                            batch_eval_labels: OneHotValidationLabels,
-                            }
-                        )
-
-                wg_acc = group_weighted_accuracy_by_device(
-                        n_classes,
-                        num_names.astype(int),
-                        prediction_eval,
-                        pred_scores_eval,
-                        ValidationNames,
-                        id_to_labels,
-                        )
-
-                print("iteration {:06}".format(iteration), end='')
-                print(" | training loss {:01.4f} accuracy {:01.3f}".format(loss, accuracy), end='')
-                print(" | evalaution loss {:01.4f} accuracy {:01.3f} wg acc {:01.3f}".format(loss_eval, accuracy_eval, wg_acc))
-
-        saver.save(sess, filename + '.tuned')
-        ### End fine-tuning
-        ##############################################################################
-
-
-        bprint("\n\n\nDone")
-        bprint(filename)
