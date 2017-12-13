@@ -29,68 +29,19 @@ try:
 except ImportError:
     bprint = lambda x: print(x)
 
-from plaid_data_setup import get_input_len, get_labels_len, train_cycle_nn, gen_cross_validation_data, group_weighted_accuracy_by_device
+from plaid_data_setup import get_input_len, get_labels_len, train_cycle_nn, gen_cross_validation_data, group_weighted_accuracy_by_device, select_cross_validation_set
 
 import DeepIoT_compressor
 import DeepIoT_dropOut
 import DeepIoT_utilities
 
 # Config:
-n_training_iter  = 150_000
+n_training_iter  = 150000
 n_hidden         = 100
 n_input          = get_input_len()
 n_labels         = get_labels_len()
 learning_rate    = 0.001
 BATCH_SIZE       = 50
-
-# Initial probabilities for drop rates
-FC_KEEP_PROBABILITY = 0.5
-
-# Initialize vectors for each layer with the initial dropout probabilty for each
-# node
-#
-# XXX Network-specific
-dropout_probabilities_fc1 = tf.get_variable(
-        "dropout_probabilities_fc1",
-        shape=[1, n_hidden],
-        dtype=tf.float64,
-        initializer=tf.constant_initializer(FC_KEEP_PROBABILITY),
-        trainable=False,
-        )
-
-# prun_thres
-#
-# This single scalar is learned and is the threshold to prune a node from the
-# network. It is a global that is updated as the compressor phase runs.
-prune_threshold = tf.get_variable("prune_threshold",
-        shape=[],
-        dtype=tf.float64,
-        initializer=tf.constant_initializer(0.0),
-        trainable=False,
-        )
-
-# was "sol_train"
-#
-# Indicator used in dropout creation that changes dropout behavior based on
-# whether we are in the compress or fine-tune phase
-compress_done = tf.Variable(0,
-        dtype=tf.float64,
-        trainable=False,
-        )
-
-# prob_list_dict
-layer_name_to_probability_variables = {
-        'fc1': dropout_probabilities_fc1,
-        }
-
-# org_dim_dict
-layer_name_to_original_dimensions = {
-        'fc1': n_hidden,
-        }
-
-# A variable that I highly suspect was used for debugging and doesn't actually
-# do anything:
-compressor_global_step = tf.Variable(0, trainable=False)
 
 def build_nn(BatchedTrainingData, BatchedTrainingLabels, BatchedEvalData, BatchedEvalLabels):
     #graph = tf.Graph()
@@ -254,6 +205,7 @@ if __name__ == "__main__":
     results = [[] for index in range(cross_validation_set_count)]
     for cross_validation_index in range(cross_validation_set_count):
         print("Cross validation step " + str(cross_validation_index))
+        tf.reset_default_graph()
 
         # select cross validation set
         training_indices, validation_indices = select_cross_validation_set(cross_validation_indices, cross_validation_index)
@@ -268,6 +220,56 @@ if __name__ == "__main__":
         #print("Loading data...")
         #TrainingData, ValidationData, TrainingLabels, ValidationLabels,\
         #        TrainingNames, ValidationNames, labelstrs, num_names = gen_data()
+
+
+        # Initial probabilities for drop rates
+        FC_KEEP_PROBABILITY = 0.5
+
+        # Initialize vectors for each layer with the initial dropout probabilty for each
+        # node
+        #
+        # XXX Network-specific
+        dropout_probabilities_fc1 = tf.get_variable(
+                "dropout_probabilities_fc1",
+                shape=[1, n_hidden],
+                dtype=tf.float64,
+                initializer=tf.constant_initializer(FC_KEEP_PROBABILITY),
+                trainable=False,
+                )
+
+        # prun_thres
+        #
+        # This single scalar is learned and is the threshold to prune a node from the
+        # network. It is a global that is updated as the compressor phase runs.
+        prune_threshold = tf.get_variable("prune_threshold",
+                shape=[],
+                dtype=tf.float64,
+                initializer=tf.constant_initializer(0.0),
+                trainable=False,
+                )
+
+        # was "sol_train"
+        #
+        # Indicator used in dropout creation that changes dropout behavior based on
+        # whether we are in the compress or fine-tune phase
+        compress_done = tf.Variable(0,
+                dtype=tf.float64,
+                trainable=False,
+                )
+
+        # prob_list_dict
+        layer_name_to_probability_variables = {
+                'fc1': dropout_probabilities_fc1,
+                }
+
+        # org_dim_dict
+        layer_name_to_original_dimensions = {
+                'fc1': n_hidden,
+                }
+
+        # A variable that I highly suspect was used for debugging and doesn't actually
+        # do anything:
+        compressor_global_step = tf.Variable(0, trainable=False)
 
         # convert Labels from integers to one-hot array
         n_classes = len(labelstrs)
@@ -375,7 +377,7 @@ if __name__ == "__main__":
                 print("Finished initial training.")
                 print('='*80)
 
-                saver.save(sess, filename + '.uncompressed')
+                saver.save(sess, filename + str(cross_validation_index) + '.uncompressed')
             ## END TRAIN UNCOMPRESSED
             ##############################################################################
 
@@ -521,7 +523,7 @@ if __name__ == "__main__":
             results[cross_validation_index].append(stats['original_size'])
             results[cross_validation_index].append(stats['compressed_size'])
 
-            saver.save(sess, filename + '.compressed')
+            saver.save(sess, filename + str(cross_validation_index) + '.compressed')
             ### End compression
             ##############################################################################
 
@@ -533,7 +535,7 @@ if __name__ == "__main__":
             bprint(filename)
 
             # Fine-tuning configuration
-            FINE_TUNE_ITERATION_LIMIT = 100_000
+            FINE_TUNE_ITERATION_LIMIT = 10000
 
             # Internally, this will zero the dropped nodes
             sess.run(tf.assign(compress_done, 1.0))
@@ -574,7 +576,7 @@ if __name__ == "__main__":
                     print(" | evalaution loss {:01.4f} accuracy {:01.3f} wg acc {:01.3f}".format(loss_eval, accuracy_eval, wg_acc))
             results[cross_validation_index].append(wg_acc)
 
-            saver.save(sess, filename + '.tuned')
+            saver.save(sess, filename + str(cross_validation_index) + '.tuned')
             ### End fine-tuning
             ##############################################################################
 
@@ -584,6 +586,8 @@ if __name__ == "__main__":
 
     print()
     print("Results:", results)
-    print("Accuracies:", results[:, 2])
-    print("Average accuracy=", np.mean(results[:, 2]))
+    np_res = np.array(results)
+    print("Accuracies:", np_res[:, 2])
+    print("Average accuracy=", np.mean(np_res[:, 2]))
+    print("Average size=", np.mean(np_res[:, 1]))
 
