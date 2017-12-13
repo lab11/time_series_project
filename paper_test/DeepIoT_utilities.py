@@ -58,26 +58,27 @@ def gen_cur_prun(sess, left_num_dict):
 # Given two "layer_name: nodes" mappings, see how much better we're doing
 #
 # XXX Not generic, assumes knowledge of how to interperet layer names
-def compress_ratio(cur_left_num, org_dim_dict):
-    orginal_size    = 0
+# XXX Fuck it, makin it worse with n_input, n_labels
+def compress_ratio(cur_left_num, org_dim_dict, n_input, n_labels):
+    original_size   = 0
     compressed_size = 0
 
     # Weights: input -> hidden
-    original_size   += dense_single_layer_with_dropout.n_input * org_dim_dict['fc1']
-    compressed_size += dense_single_layer_with_dropout.n_input * cur_left_num['fc1']
+    original_size   += n_input * org_dim_dict['fc1']
+    compressed_size += n_input * cur_left_num['fc1']
     # Weights: hidden -> output
-    original_size   += org_dim_dict['fc1'] * dense_single_layer_with_dropout.n_labels
-    compressed_size += cur_left_num['fc1'] * dense_single_layer_with_dropout.n_labels
+    original_size   += org_dim_dict['fc1'] * n_labels
+    compressed_size += cur_left_num['fc1'] * n_labels
     # Biases: hidden
     original_size   += org_dim_dict['fc1']
     compressed_size += cur_left_num['fc1']
     # Biases: output
-    original_size   += dense_single_layer_with_dropout.n_labels
-    compressed_size += dense_single_layer_with_dropout.n_labels
+    original_size   += n_labels
+    compressed_size += n_labels
 
     percent = 100*(compressed_size/original_size)
 
-    print("Original Size:", original_size, "Compressed Size:", compressed_size, "Percent:", percent)
+    print("  Original Size:", original_size, "Compressed Size:", compressed_size, "Percent:", percent)
 
     return percent
 

@@ -23,6 +23,12 @@ try:
 except ImportError:
     pass
 
+try:
+    from termcolor import cprint
+    bprint = lambda x: cprint(x, attrs=['bold'])
+except ImportError:
+    bprint = lambda x: bprint(x)
+
 from plaid_data_setup import get_input_len, get_labels_len, train_cycle_nn, gen_data
 
 import DeepIoT_compressor
@@ -221,14 +227,16 @@ def build_nn(BatchedTrainingData, BatchedTrainingLabels, BatchedEvalData, Batche
             var_list=compressor_variables_to_optimize, global_step=compressor_global_step)
 
     # "layer_name: <tf.fn>[compute: count_of_nodes_not_pruned]" (those "left")
-    left_num_dict = DeepIoT_utilities.count_prun(
+    left_num_dict__TF_to_run = DeepIoT_utilities.count_prun(
             layer_name_to_probability_variables, prune_threshold)
 
     train_TF_ops = (discOptimizer, loss_train, BatchedTrainingLabels, prediction_train, accuracy_train)
     compressor_TF_ops = (compressor_optimizer, compressor_loss,
             maintain_averages_op, ema.average(loss_mean), ema.average(loss_std))
 
-    return train_TF_ops, eval_TF_ops, compressor_TF_ops
+    hacks = (update_drop_op__dict_of_TF_things_to_run, left_num_dict__TF_to_run)
+
+    return train_TF_ops, eval_TF_ops, compressor_TF_ops, hacks
 
 if __name__ == "__main__":
     # train the neural network on test data
@@ -267,7 +275,7 @@ if __name__ == "__main__":
 
     # Create NN's
     print("Creating NN's...")
-    training_NN, eval_NN, compressor_NN = build_nn(
+    training_NN, eval_NN, compressor_NN, hacks__TF_to_run = build_nn(
             BatchedTrainingData=batch_training_features, BatchedTrainingLabels=batch_training_labels,
             BatchedEvalData=batch_eval_features, BatchedEvalLabels=batch_eval_labels,
             )
@@ -319,7 +327,7 @@ if __name__ == "__main__":
 
             saver.save(sess, os.path.join(CACHE_PATH, 'model'))
 
-        print("Running loaded model on evaluation data once first:")
+        print("\nRunning loaded model on evaluation data once first:")
         # Run evaluation
         batch_nums_eval = np.random.choice(ValidationData.shape[0], BATCH_SIZE)
         loss_eval, labels_eval, prediction_eval = sess.run(eval_NN,
@@ -330,3 +338,69 @@ if __name__ == "__main__":
                 )
 
         print(" | evalaution loss {}".format(loss_eval))
+
+        bprint("\nStart Compressing")
+
+        # Compression configuration
+        COMPRESSION_ITERATION_LIMIT = 100_000
+        UPDATE_STEP = 500       # How many iterations to run at each threshold step
+        START_THRES = 0.0       # Initial τ
+        FINAL_THRES = 0.825     # Final τ
+        THRES_STEP = 33         # 0.825 / 33 -> 0.025
+
+        # Make sure we're in compression mode
+        sess.run(tf.assign(compress_done, 0.0))
+
+        thres_update_count = 0
+
+        for iteration in range(COMPRESSION_ITERATION_LIMIT):
+            # select data to train on and test on for this iteration
+            batch_nums = np.random.choice(TrainingData.shape[0], BATCH_SIZE)
+
+            # Train critic
+            optimizer, loss, labels, prediction, accuracy = sess.run(training_NN,
+                    feed_dict = {
+                        batch_training_features: TrainingData[batch_nums],
+                        batch_training_labels: OneHotTrainingLabels[batch_nums],
+                        }
+                    )
+
+            # Train compressor
+            compressor_optimizer, compressor_loss,\
+                    ema_operator, loss_mean, loss_std = sess.run(compressor_NN,
+                            feed_dict = {
+                                batch_training_features: TrainingData[batch_nums],
+                                batch_training_labels: OneHotTrainingLabels[batch_nums],
+                                }
+                            )
+            # This is a bit of a hack from their arch that's persisted
+            for layer in hacks__TF_to_run[0].keys():
+                sess.run(hacks__TF_to_run[0][layer])
+
+            # This is a silly way of doing this, but I'm paranoid about changing
+            # too much at the moment
+            if iteration % UPDATE_STEP == 0 and thres_update_count <= THRES_STEP:
+                cur_thres = START_THRES + thres_update_count*(FINAL_THRES - START_THRES)/THRES_STEP
+                bprint("Current threshold, τ = {}".format(cur_thres))
+                sess.run(tf.assign(prune_threshold, cur_thres))
+                thres_update_count += 1
+
+            if (iteration < 5) or (iteration % 200 == 199):
+                # Run an evaluation
+                batch_nums_eval = np.random.choice(ValidationData.shape[0], BATCH_SIZE)
+                loss_eval, labels_eval, prediction_eval = sess.run(eval_NN,
+                        feed_dict = {
+                            batch_eval_features: ValidationData[batch_nums_eval],
+                            batch_eval_labels: OneHotValidationLabels[batch_nums_eval],
+                            }
+                        )
+                print("iteration {:06}".format(iteration), end='')
+                print(" | training loss {} accuracy {}".format(loss, accuracy), end='')
+                print(" | evalaution loss {}".format(loss_eval))
+
+                cur_left_num = DeepIoT_utilities.gen_cur_prun(sess, hacks__TF_to_run[1])
+                print("  Left Elements: {}".format(cur_left_num))
+                cur_comps_ratio = DeepIoT_utilities.compress_ratio(
+                        cur_left_num, layer_name_to_original_dimensions,
+                        n_input, n_labels,
+                        )
