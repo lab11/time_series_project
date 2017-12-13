@@ -36,6 +36,7 @@ import DeepIoT_dropOut
 import DeepIoT_utilities
 
 # Config:
+n_training_iter  = 150_000
 n_hidden         = 30*11
 n_input          = get_input_len()
 n_labels         = get_labels_len()
@@ -303,17 +304,26 @@ if __name__ == "__main__":
         coord = tf.train.Coordinator()
 
 
+        CACHE_PATH = 'DeepIoT-cache'
+        # Create a unique filename for given input parameters to intelligently
+        # train or use an uncompressed model as appropriate
+        filename = 'uncompressed_{}-iter_{}-hidden_{}-input_{}-labels'.format(
+                n_training_iter, n_hidden, n_input, n_labels)
+        filename = os.path.join(CACHE_PATH, filename)
+        bprint(filename)
+        print()
+
+
         ##############################################################################
         ### LOAD OR TRAIN AN INITIAL UNCOMPRESSED MODEL
-        CACHE_PATH = 'DeepIoT-cache'
-        if os.path.exists(CACHE_PATH):
+        if os.path.exists(filename + '.uncompressed'):
             print("Loading pre-trained, uncompressed model")
-            saver.restore(sess, os.path.join(CACHE_PATH, 'model'))
+            saver.restore(sess, filename + '.uncompressed')
             print("Loaded\n")
         else:
             print('='*80)
             print("Training initial model (no dropout)")
-            for iteration in range(150_000):
+            for iteration in range(n_training_iter):
                 # select data to train on and test on for this iteration
                 batch_nums = np.random.choice(TrainingData.shape[0], BATCH_SIZE)
 
@@ -349,7 +359,7 @@ if __name__ == "__main__":
             print("Finished initial training.")
             print('='*80)
 
-            saver.save(sess, os.path.join(CACHE_PATH, 'model'))
+            saver.save(sess, filename + '.uncompressed')
         ## END TRAIN UNCOMPRESSED
         ##############################################################################
 
@@ -379,6 +389,7 @@ if __name__ == "__main__":
         ##############################################################################
         ### Run compression
         bprint("\nStart Compressing")
+        bprint(filename)
 
         # Compression configuration
         COMPRESSION_ITERATION_LIMIT = 100_000
@@ -457,6 +468,8 @@ if __name__ == "__main__":
                 if cur_comps_ratio < TARGET_COMPRESSION_RATIO and np.mean(accuracy_eval) >= TARGET_COMPRESSED_ACCURACY:
                     bprint("\nTarget Reached!")
                     break
+
+        saver.save(sess, filename + '.compressed')
         ### End compression
         ##############################################################################
 
@@ -465,6 +478,7 @@ if __name__ == "__main__":
         ##############################################################################
         ### Run fine-tuning
         bprint("\n\n\nBegin fine-tuning")
+        bprint(filename)
 
         # Fine-tuning configuration
         FINE_TUNE_ITERATION_LIMIT = 100_000
@@ -505,5 +519,11 @@ if __name__ == "__main__":
                 print("iteration {:06}".format(iteration), end='')
                 print(" | training loss {:01.4f} accuracy {:01.3f}".format(loss, accuracy), end='')
                 print(" | evalaution loss {:01.4f} accuracy {:01.3f} wg acc {:01.3f}".format(loss_eval, accuracy_eval, wg_acc))
+
+        saver.save(sess, filename + '.tuned')
         ### End fine-tuning
         ##############################################################################
+
+
+        bprint("\n\n\nDone")
+        bprint(filename)
